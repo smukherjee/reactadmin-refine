@@ -1,15 +1,10 @@
-"""Compatibility shim: lazily forward attributes to `backend.app.main.core`.
-
-This shim intentionally avoids importing other top-level `backend.*` symbols
-at module import time to prevent circular imports while the migration is in
-progress. Attribute access is forwarded to `backend.app.main.core` lazily.
-"""
+"""Compatibility shim: lazily forward to backend.app.cache.core"""
 
 from importlib import import_module
 from types import ModuleType
 from typing import Any
 
-_REAL_MODULE = "backend.app.main.core"
+_REAL_MODULE = "backend.app.cache.core"
 
 
 def _load() -> ModuleType:
@@ -24,4 +19,3 @@ def __getattr__(name: str) -> Any:  # pragma: no cover - exercised indirectly in
 def __dir__():  # pragma: no cover - convenience helper
     mod = _load()
     return list(globals().keys()) + [n for n in dir(mod) if not n.startswith("_")]
-
