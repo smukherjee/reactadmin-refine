@@ -1,0 +1,44 @@
+Metadata-Version: 2.4
+Name: reactadmin-refine-backend
+Version: 0.1.0
+Summary: Enterprise FastAPI backend with modular architecture
+Author-email: Your Name <your.email@example.com>
+License: MIT
+Project-URL: Homepage, https://github.com/yourusername/reactadmin-refine
+Project-URL: Repository, https://github.com/yourusername/reactadmin-refine.git
+Project-URL: Issues, https://github.com/yourusername/reactadmin-refine/issues
+Keywords: fastapi,backend,api,enterprise
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Framework :: FastAPI
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.118.0
+Requires-Dist: uvicorn[standard]==0.37.0
+Requires-Dist: SQLAlchemy==2.0.43
+Requires-Dist: psycopg>=3.2.0
+Requires-Dist: alembic>=1.16.0
+Requires-Dist: redis==5.0.3
+Requires-Dist: python-jose[cryptography]>=3.5.0
+Requires-Dist: passlib[bcrypt]>=1.7.4
+Requires-Dist: pydantic>=2.2.0
+Requires-Dist: email-validator>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: types-passlib>=1.7.7.0
+Requires-Dist: types-python-jose>=3.5.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.4.0; extra == "dev"
+Requires-Dist: httpx>=0.28.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: pyright; extra == "dev"
+Requires-Dist: black>=24.0.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: bandit>=1.7.0; extra == "dev"
+Requires-Dist: pre-commit>=3.0.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: reactadmin-refine-backend[dev]; extra == "all"

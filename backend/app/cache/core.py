@@ -13,7 +13,9 @@ from redis import Redis
 import uuid
 import logging
 
-logger = logging.getLogger(__name__)
+from backend.app.core.logging import get_logger, log_cache_operation
+
+logger = get_logger('cache')
 
 # Redis configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -64,27 +66,48 @@ def cache_key(prefix: str, *args: Union[str, uuid.UUID], client_id: Union[str, u
 
 def get_cached(key: str) -> Optional[Any]:
     """Get value from cache."""
+    import time
+    start_time = time.time()
+    
     client = get_redis_client()
     if client is None:
+        log_cache_operation('get', key, hit=False)
         return None
+    
     try:
         value = cast(Any, client).get(key)
+        duration_ms = (time.time() - start_time) * 1000
+        
         if value is not None:
             # ensure we have a string for json.loads (redis is configured with decode_responses=True)
-            return json.loads(value)
+            result = json.loads(value)
+            log_cache_operation('get', key, hit=True, duration_ms=duration_ms)
+            return result
+        else:
+            log_cache_operation('get', key, hit=False, duration_ms=duration_ms)
+            return None
     except Exception as e:
+        duration_ms = (time.time() - start_time) * 1000
+        log_cache_operation('get', key, hit=False, duration_ms=duration_ms)
         logger.warning(f"Cache get error for key {key}: {e}")
     return None
 
 
 def set_cached(key: str, value: Any, ttl: int = CACHE_TTL) -> bool:
     """Set value in cache with TTL."""
+    import time
+    start_time = time.time()
+    
     client = get_redis_client()
     if client is None:
+        log_cache_operation('set', key)
         return False
+    
     try:
         serialized = json.dumps(value, default=str)
         cast(Any, client).setex(key, ttl, serialized)
+        duration_ms = (time.time() - start_time) * 1000
+        log_cache_operation('set', key, duration_ms=duration_ms)
         return True
     except Exception as e:
         logger.warning(f"Cache set error for key {key}: {e}")

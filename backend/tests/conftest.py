@@ -11,7 +11,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from backend.app.main.core import app
+from backend.main import app
 from backend.app.db.core import Base, get_db
 
 

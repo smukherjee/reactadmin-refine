@@ -1,0 +1,2 @@
+[console_scripts]
+backend-server = backend.main:main

@@ -20,9 +20,10 @@ import logging
 
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure structured logging
+from backend.app.core.logging import setup_logging, get_logger
+setup_logging()
+logger = get_logger(__name__)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
@@ -75,8 +76,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="ReactAdmin-Refine Backend", lifespan=lifespan)
 
 # Attach middleware for tenant extraction and RBAC payload
+# Attach middleware for tenant extraction and RBAC payload
 from backend.app.middleware.core import TenantRBACMiddleware
+from backend.app.middleware.logging import RequestLoggingMiddleware, PerformanceLoggingMiddleware
+
+# Add logging middleware (order matters - add these first)
+app.add_middleware(PerformanceLoggingMiddleware, slow_request_threshold=1000.0)
+app.add_middleware(RequestLoggingMiddleware, 
+                  log_request_body=os.getenv("LOG_REQUEST_BODY", "false").lower() == "true",
+                  log_response_body=os.getenv("LOG_RESPONSE_BODY", "false").lower() == "true")
 app.add_middleware(TenantRBACMiddleware)
+
+# Include v1 API router for versioning
+from backend.app.api.v1 import router as v1_router
+app.include_router(v1_router, prefix="/api/v1")
 
 # create tables if not exist (helpful for initial run)
 Base.metadata.create_all(bind=engine)
@@ -296,4 +309,165 @@ def cache_status():
         "redis_available": cache.is_redis_available(),
         "redis_url": cache.REDIS_URL.split('@')[-1] if '@' in cache.REDIS_URL else cache.REDIS_URL,  # Hide credentials
         "cache_ttl": cache.CACHE_TTL
+    }
+
+
+# Health and metrics endpoints for monitoring and observability
+@app.get("/health")
+def health_check():
+    """
+    Basic health check endpoint.
+    Returns minimal health status for load balancers.
+    """
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": os.getenv("APP_VERSION", "0.1.0"),
+        "environment": os.getenv("ENVIRONMENT", "development")
+    }
+
+
+@app.get("/health/detailed")
+def detailed_health_check(db: Session = Depends(get_db)):
+    """
+    Detailed health check endpoint.
+    Checks all critical components: database, redis, system resources.
+    """
+    import time
+    import psutil
+    
+    components = {}
+    overall_status = "healthy"
+    
+    # Check database health
+    try:
+        from sqlalchemy import text
+        db_start = time.time()
+        db.execute(text("SELECT 1"))
+        db_response_time = (time.time() - db_start) * 1000
+        
+        components["database"] = {
+            "status": "healthy",
+            "response_time_ms": round(db_response_time, 2)
+        }
+    except Exception as e:
+        components["database"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+        overall_status = "degraded"
+    
+    # Check Redis health
+    try:
+        redis_client = cache.get_redis_client()
+        if redis_client:
+            redis_start = time.time()
+            redis_client.ping()
+            redis_response_time = (time.time() - redis_start) * 1000
+            
+            # Get Redis info
+            redis_info = redis_client.info()
+            
+            components["redis"] = {
+                "status": "healthy",
+                "response_time_ms": round(redis_response_time, 2),
+                "memory_usage_mb": round(redis_info.get("used_memory", 0) / 1024 / 1024, 2),
+                "connected_clients": redis_info.get("connected_clients", 0)
+            }
+        else:
+            components["redis"] = {
+                "status": "unavailable",
+                "error": "Redis client not initialized"
+            }
+            overall_status = "degraded"
+    except Exception as e:
+        components["redis"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+        overall_status = "degraded"
+    
+    # Check system resources
+    try:
+        components["system"] = {
+            "status": "healthy",
+            "cpu_percent": psutil.cpu_percent(interval=1),
+            "memory_percent": psutil.virtual_memory().percent,
+            "memory_available_mb": round(psutil.virtual_memory().available / 1024 / 1024, 2),
+            "disk_usage_percent": psutil.disk_usage('/').percent
+        }
+    except Exception as e:
+        components["system"] = {
+            "status": "unhealthy", 
+            "error": str(e)
+        }
+        overall_status = "degraded"
+    
+    return {
+        "status": overall_status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": os.getenv("APP_VERSION", "0.1.0"),
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "components": components
+    }
+
+
+@app.get("/metrics")
+def system_metrics():
+    """
+    System metrics endpoint for monitoring.
+    Returns key system performance indicators.
+    """
+    import time
+    import psutil
+    
+    # Calculate uptime (approximate - since process start)
+    process = psutil.Process(os.getpid())
+    uptime_seconds = time.time() - process.create_time()
+    
+    return {
+        "cpu_percent": psutil.cpu_percent(interval=1),
+        "memory_percent": psutil.virtual_memory().percent,
+        "memory_available_mb": round(psutil.virtual_memory().available / 1024 / 1024, 2),
+        "disk_usage_percent": psutil.disk_usage('/').percent,
+        "uptime_seconds": round(uptime_seconds, 2)
+    }
+
+
+@app.get("/readiness")
+def readiness_check(db: Session = Depends(get_db)):
+    """
+    Kubernetes readiness probe endpoint.
+    Checks if the application is ready to receive traffic.
+    """
+    try:
+        from sqlalchemy import text
+        # Test critical dependencies
+        db.execute(text("SELECT 1"))
+        
+        redis_client = cache.get_redis_client()
+        if redis_client:
+            redis_client.ping()
+        
+        return {
+            "status": "ready", 
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        return {
+            "status": "not_ready", 
+            "error": str(e), 
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+
+@app.get("/liveness")
+def liveness_check():
+    """
+    Kubernetes liveness probe endpoint.
+    Checks if the application is alive and should not be restarted.
+    """
+    return {
+        "status": "alive", 
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }

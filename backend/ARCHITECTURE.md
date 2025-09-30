@@ -88,17 +88,17 @@ Concrete migration plan (incremental, low risk)
 
 Checklist for enterprise readiness
 
-- [ ] Modular package layout (api, core, db, services, auth, cache)
+- [x] Modular package layout (api, core, db, services, auth, cache)
 - [ ] Config via pydantic BaseSettings
 - [ ] Database migrations (Alembic)
 - [ ] CI pipeline running tests+typechecks (we added `scripts/run_checks.sh` and can scaffold GH workflow)
-- [ ] Dependency management (pyproject.toml or pinned requirements.txt) — you have both; prefer pyproject + lockfile for reproducibility
+- [x] Dependency management (pyproject.toml or pinned requirements.txt) — you have both; prefer pyproject + lockfile for reproducibility
 - [ ] Dockerfile and container run instructions
-- [ ] Health and metrics endpoints
-- [ ] Structured logs and request/response logging
+- [x] Health and metrics endpoints
+- [x] Structured logs and request/response logging
 - [ ] Rate limiting and security headers via middleware (X-Frame-Options, CSP, HSTS)
 - [ ] Secrets management guidance (do not store secrets in repo; use env or secret manager)
-- [ ] RBAC and tenant isolation tests (we already have multitenant tests — great)
+- [x] RBAC and tenant isolation tests (we already have multitenant tests — great)
 
 Minimal safe changes I can apply now
 

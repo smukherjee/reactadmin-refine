@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from backend.app.main.core import app
+from backend.main import app
 
 
 def run() -> None:

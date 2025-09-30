@@ -1,27 +1,13 @@
-"""Compatibility shim: lazily forward attributes to `backend.app.main.core`.
+"""Main application entry point.
 
-This shim intentionally avoids importing other top-level `backend.*` symbols
-at module import time to prevent circular imports while the migration is in
-progress. Attribute access is forwarded to `backend.app.main.core` lazily.
+This module provides the main FastAPI application instance from the modular
+backend.app structure. Use this for running the server or importing the app.
 """
 
-from importlib import import_module
-from types import ModuleType
-from typing import Any
+from backend.app.main.core import app
 
-_REAL_MODULE = "backend.app.main.core"
+__all__ = ["app"]
 
-
-def _load() -> ModuleType:
-    return import_module(_REAL_MODULE)
-
-
-def __getattr__(name: str) -> Any:  # pragma: no cover - exercised indirectly in tests
-    mod = _load()
-    return getattr(mod, name)
-
-
-def __dir__():  # pragma: no cover - convenience helper
-    mod = _load()
-    return list(globals().keys()) + [n for n in dir(mod) if not n.startswith("_")]
-
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

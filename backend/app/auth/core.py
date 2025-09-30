@@ -17,6 +17,9 @@ from jose import jwt, JWTError
 from backend.app.db.core import get_db
 from backend.app.crud import core as crud
 from backend.app.models import core as models
+from backend.app.core.logging import get_logger, log_auth_event, log_permission_check
+
+logger = get_logger('auth')
 
 if TYPE_CHECKING:
     # Avoid runtime import cycles for static type checkers
