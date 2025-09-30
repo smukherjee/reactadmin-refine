@@ -1,9 +1,8 @@
-from pydantic import BaseModel
-from pydantic import EmailStr
-from pydantic import ConfigDict
-from typing import Optional, List
-from uuid import UUID
 from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class TenantBase(BaseModel):

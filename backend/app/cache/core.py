@@ -5,19 +5,18 @@ Keep the implementation identical to preserve behavior; callers can be updated t
 from `app.cache.core` incrementally.
 """
 
+import concurrent.futures
 import json
-import os
-from typing import Optional, List, Any, Dict, Union, Callable, cast
-import redis
-from redis import Redis
-import redis.asyncio as redis_async
-from typing import Optional
+import time
 import uuid
-import logging
+from typing import Any, Callable, Dict, List, Optional, Union, cast
+
+import redis
+import redis.asyncio as redis_async
 
 from backend.app.core.logging import get_logger, log_cache_operation
 
-logger = get_logger('cache')
+logger = get_logger("cache")
 
 # Redis configuration
 from backend.app.core.config import settings
@@ -51,6 +50,64 @@ def get_redis_client() -> Optional[Any]:
         return None
 
 
+def safe_redis_call(fn: Callable[[Any], Any], timeout: float = 0.25) -> Dict[str, Any]:
+    """Run a potentially blocking Redis operation in a thread with a timeout.
+
+    Args:
+        fn: Callable that accepts a redis client and performs an operation (e.g. lambda c: c.ping()).
+        timeout: timeout in seconds for the operation.
+
+    Returns a dict with keys:
+        ok: bool - whether call completed successfully
+        result: the return value from fn on success, else None
+        elapsed_ms: float - elapsed time in ms for the attempted call (0.0 if not attempted)
+        timeout: bool - whether the call timed out
+        error: Optional[str] - exception string if any
+    """
+    client = get_redis_client()
+    if client is None:
+        return {
+            "ok": False,
+            "result": None,
+            "elapsed_ms": 0.0,
+            "timeout": False,
+            "error": "redis client not initialized",
+        }
+
+    start = time.time()
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(fn, client)
+            try:
+                res = fut.result(timeout=timeout)
+                elapsed_ms = (time.time() - start) * 1000
+                return {
+                    "ok": True,
+                    "result": res,
+                    "elapsed_ms": round(elapsed_ms, 2),
+                    "timeout": False,
+                    "error": None,
+                }
+            except concurrent.futures.TimeoutError:
+                elapsed_ms = (time.time() - start) * 1000
+                return {
+                    "ok": False,
+                    "result": None,
+                    "elapsed_ms": round(elapsed_ms, 2),
+                    "timeout": True,
+                    "error": "timeout",
+                }
+    except Exception as e:
+        elapsed_ms = (time.time() - start) * 1000
+        return {
+            "ok": False,
+            "result": None,
+            "elapsed_ms": round(elapsed_ms, 2),
+            "timeout": False,
+            "error": str(e),
+        }
+
+
 def get_async_redis_client() -> Optional[redis_async.Redis]:
     """Return the module-level async redis client if available."""
     return async_redis_client
@@ -61,7 +118,11 @@ def is_redis_available() -> bool:
     return get_redis_client() is not None
 
 
-def cache_key(prefix: str, *args: Union[str, uuid.UUID], client_id: Union[str, uuid.UUID, None] = None) -> str:
+def cache_key(
+    prefix: str,
+    *args: Union[str, uuid.UUID],
+    client_id: Union[str, uuid.UUID, None] = None,
+) -> str:
     """Generate a cache key optionally namespaced by client_id then prefix and arguments.
 
     Example: cache_key('user_permissions', user_id, client_id=client_id) -> "<client_id>:user_permissions:<user_id>"
@@ -77,49 +138,49 @@ def cache_key(prefix: str, *args: Union[str, uuid.UUID], client_id: Union[str, u
 
 def get_cached(key: str) -> Optional[Any]:
     """Get value from cache."""
-    import time
     start_time = time.time()
-    
+
     client = get_redis_client()
     if client is None:
-        log_cache_operation('get', key, hit=False)
+        log_cache_operation("get", key, hit=False)
         return None
-    
-    try:
-        value = cast(Any, client).get(key)
-        duration_ms = (time.time() - start_time) * 1000
-        
-        if value is not None:
-            # ensure we have a string for json.loads (redis is configured with decode_responses=True)
-            result = json.loads(value)
-            log_cache_operation('get', key, hit=True, duration_ms=duration_ms)
+
+    # Use safe helper to bound get operation
+    resp = safe_redis_call(lambda c: c.get(key), timeout=0.25)
+    duration_ms = resp.get("elapsed_ms", 0.0)
+    if resp.get("ok") and resp.get("result") is not None:
+        try:
+            raw = resp.get("result")
+            if raw is None:
+                return None
+            result = json.loads(raw)
+            log_cache_operation("get", key, hit=True, duration_ms=duration_ms)
             return result
-        else:
-            log_cache_operation('get', key, hit=False, duration_ms=duration_ms)
-            return None
-    except Exception as e:
-        duration_ms = (time.time() - start_time) * 1000
-        log_cache_operation('get', key, hit=False, duration_ms=duration_ms)
-        logger.warning(f"Cache get error for key {key}: {e}")
-    return None
+        except Exception:
+            log_cache_operation("get", key, hit=True, duration_ms=duration_ms)
+            return resp.get("result")
+    else:
+        log_cache_operation("get", key, hit=False, duration_ms=duration_ms)
+        if resp.get("error"):
+            logger.debug(f"Cache get error for key {key}: {resp.get('error')}")
+        return None
 
 
 def set_cached(key: str, value: Any, ttl: int = CACHE_TTL) -> bool:
     """Set value in cache with TTL."""
-    import time
     start_time = time.time()
-    
+
     client = get_redis_client()
     if client is None:
-        log_cache_operation('set', key)
+        log_cache_operation("set", key)
         return False
-    
+
     try:
         serialized = json.dumps(value, default=str)
-        cast(Any, client).setex(key, ttl, serialized)
-        duration_ms = (time.time() - start_time) * 1000
-        log_cache_operation('set', key, duration_ms=duration_ms)
-        return True
+        resp = safe_redis_call(lambda c: c.setex(key, ttl, serialized), timeout=0.25)
+        duration_ms = resp.get("elapsed_ms", 0.0)
+        log_cache_operation("set", key, duration_ms=duration_ms)
+        return resp.get("ok", False)
     except Exception as e:
         logger.warning(f"Cache set error for key {key}: {e}")
         return False
@@ -130,12 +191,10 @@ def delete_cached(key: str) -> bool:
     client = get_redis_client()
     if client is None:
         return False
-    try:
-        cast(Any, client).delete(key)
-        return True
-    except Exception as e:
-        logger.warning(f"Cache delete error for key {key}: {e}")
-        return False
+    resp = safe_redis_call(lambda c: c.delete(key), timeout=0.25)
+    if not resp.get("ok") and resp.get("error"):
+        logger.debug(f"Cache delete error for key {key}: {resp.get('error')}")
+    return resp.get("ok", False)
 
 
 def delete_pattern(pattern: str) -> int:
@@ -143,19 +202,32 @@ def delete_pattern(pattern: str) -> int:
     client = get_redis_client()
     if client is None:
         return 0
-    try:
-        keys = cast(Any, client).keys(pattern)
-        if keys:
-            # keys may be an iterable of bytes/str; pass through to delete
-            return cast(Any, client).delete(*keys)
+
+    keys_resp = safe_redis_call(lambda c: c.keys(pattern), timeout=0.5)
+    if not keys_resp.get("ok"):
+        logger.debug(
+            f"Cache pattern keys error for pattern {pattern}: {keys_resp.get('error')}"
+        )
         return 0
-    except Exception as e:
-        logger.warning(f"Cache pattern delete error for pattern {pattern}: {e}")
+
+    keys = keys_resp.get("result") or []
+    if not keys:
+        return 0
+
+    del_resp = safe_redis_call(lambda c: c.delete(*keys), timeout=0.5)
+    if del_resp.get("ok"):
+        return del_resp.get("result") or 0
+    else:
+        logger.debug(
+            f"Cache pattern delete error for pattern {pattern}: {del_resp.get('error')}"
+        )
         return 0
 
 
 # (No legacy helpers) All cache functions require explicit client_id + id parameters.
-def invalidate_user_cache(client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]) -> None:
+def invalidate_user_cache(
+    client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
+) -> None:
     """Invalidate all cache entries for a user within a tenant.
 
     This function requires both client_id and user_id to be provided. Keys are tenant-prefixed.
@@ -169,37 +241,59 @@ def invalidate_user_cache(client_id: Union[str, uuid.UUID], user_id: Union[str, 
     ]
     for k in keys:
         delete_cached(k)
-    publish_invalidation({"type": "user_permissions_invalidate", "user_id": user_id_str, "client_id": cid})
+    publish_invalidation(
+        {
+            "type": "user_permissions_invalidate",
+            "user_id": user_id_str,
+            "client_id": cid,
+        }
+    )
 
 
-def invalidate_role_cache(client_id: Union[str, uuid.UUID], role_id: Union[str, uuid.UUID]) -> None:
+def invalidate_role_cache(
+    client_id: Union[str, uuid.UUID], role_id: Union[str, uuid.UUID]
+) -> None:
     """Invalidate cache entries related to a role within a tenant."""
     role_id_str = str(role_id)
     cid = str(client_id)
     delete_pattern(f"{cid}:user_permissions:*")
     delete_pattern(f"{cid}:user_roles:*")
-    publish_invalidation({"type": "role_invalidate", "role_id": role_id_str, "client_id": cid})
+    publish_invalidation(
+        {"type": "role_invalidate", "role_id": role_id_str, "client_id": cid}
+    )
 
 
-def cache_user_permissions(client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID], permissions: List[str]) -> None:
+def cache_user_permissions(
+    client_id: Union[str, uuid.UUID],
+    user_id: Union[str, uuid.UUID],
+    permissions: List[str],
+) -> None:
     """Cache user permissions for a tenant (requires client_id and user_id)."""
     key = cache_key("user_permissions", user_id, client_id=client_id)
     set_cached(key, permissions)
 
 
-def get_cached_user_permissions(client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]) -> Optional[List[str]]:
+def get_cached_user_permissions(
+    client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
+) -> Optional[List[str]]:
     """Get cached user permissions for a tenant (requires client_id and user_id)."""
     key = cache_key("user_permissions", user_id, client_id=client_id)
     return get_cached(key)
 
 
-def cache_user_roles(client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID], roles: List[Dict[str, Any]]) -> None:
+def cache_user_roles(
+    client_id: Union[str, uuid.UUID],
+    user_id: Union[str, uuid.UUID],
+    roles: List[Dict[str, Any]],
+) -> None:
     """Cache user roles for a tenant."""
     key = cache_key("user_roles", user_id, client_id=client_id)
     set_cached(key, roles)
 
 
-def get_cached_user_roles(client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]) -> Optional[List[Dict[str, Any]]]:
+def get_cached_user_roles(
+    client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
+) -> Optional[List[Dict[str, Any]]]:
     """Get cached user roles for a tenant."""
     key = cache_key("user_roles", user_id, client_id=client_id)
     return get_cached(key)
@@ -210,10 +304,9 @@ def clear_all_cache() -> None:
     client = get_redis_client()
     if client is None:
         return
-    try:
-        cast(Any, client).flushdb()
-    except Exception as e:
-        logger.warning(f"Cache clear error: {e}")
+    resp = safe_redis_call(lambda c: c.flushdb(), timeout=1.0)
+    if not resp.get("ok") and resp.get("error"):
+        logger.debug(f"Cache clear error: {resp.get('error')}")
 
 
 def publish_invalidation(message: Dict[str, Any]) -> bool:
@@ -221,12 +314,12 @@ def publish_invalidation(message: Dict[str, Any]) -> bool:
     client = get_redis_client()
     if client is None:
         return False
-    try:
-        cast(Any, client).publish(INVALIDATION_CHANNEL, json.dumps(message))
-        return True
-    except Exception as e:
-        logger.warning(f"Failed to publish invalidation: {e}")
-        return False
+    resp = safe_redis_call(
+        lambda c: c.publish(INVALIDATION_CHANNEL, json.dumps(message)), timeout=0.25
+    )
+    if not resp.get("ok") and resp.get("error"):
+        logger.debug(f"Failed to publish invalidation: {resp.get('error')}")
+    return resp.get("ok", False)
 
 
 def start_invalidation_listener(handler: Callable[[Dict[str, Any]], None]) -> None:

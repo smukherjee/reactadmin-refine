@@ -4,27 +4,27 @@ This module decodes JWTs, provides a `get_current_user` dependency and
 `require_permission` factory. It prefers middleware-injected JWT payloads
 when available (attached to `request.state.jwt_payload`).
 """
+
 from __future__ import annotations
 
 import os
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
 
-from backend.app.db.core import get_db
-from backend.app.crud import core as crud
-from backend.app.models import core as models
 from backend.app.core.logging import get_logger, log_auth_event, log_permission_check
+from backend.app.crud import core as crud
+from backend.app.db.core import get_db
+from backend.app.models import core as models
 
-logger = get_logger('auth')
+logger = get_logger("auth")
 
 if TYPE_CHECKING:
     # Avoid runtime import cycles for static type checkers
     from backend.app.models.core import User
-
 
 from backend.app.core.config import settings
 
@@ -42,7 +42,9 @@ def decode_token(token: str) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-def _get_payload_from_request(request: Request, token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+def _get_payload_from_request(
+    request: Request, token: str = Depends(oauth2_scheme)
+) -> Dict[str, Any]:
     """Prefer middleware-injected payload if present, otherwise decode token."""
     mw_payload = getattr(request.state, "jwt_payload", None)
     if mw_payload:
@@ -50,7 +52,11 @@ def _get_payload_from_request(request: Request, token: str = Depends(oauth2_sche
     return decode_token(token)
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db), payload: Dict[str, Any] = Depends(_get_payload_from_request)) -> "User":
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db),
+    payload: Dict[str, Any] = Depends(_get_payload_from_request),
+) -> "User":
     """Return the current user object based on the token payload.
 
     Raises 401 if token is invalid or user not found.
@@ -75,7 +81,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db), payload: D
 def require_permission(permission: str):
     """Dependency factory that raises 403 if current user lacks the permission."""
 
-    def _checker(current_user: "User" = Depends(get_current_user), db: Session = Depends(get_db)):
+    def _checker(
+        current_user: "User" = Depends(get_current_user), db: Session = Depends(get_db)
+    ):
         perms = crud.get_user_permissions(db, current_user.id)
         if permission not in perms:
             raise HTTPException(status_code=403, detail="Insufficient permissions")

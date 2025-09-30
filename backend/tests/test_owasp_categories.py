@@ -1,24 +1,25 @@
+import importlib.util
 import os
 import pathlib
-import importlib.util
+
 import pytest
 
 
 def load_owasp_module():
     # Prefer tools/owasp/OWASPCheck.py so the helpers are not collected as tests
     repo_root = pathlib.Path(__file__).resolve().parents[2]
-    tools_owasp = repo_root / 'tools' / 'owasp' / 'OWASPCheck.py'
+    tools_owasp = repo_root / "tools" / "owasp" / "OWASPCheck.py"
     tests_dir = pathlib.Path(__file__).parent
     if tools_owasp.exists():
         owasp_path = tools_owasp
     else:
-        owasp_path = tests_dir / 'OWASPCheck.py'
+        owasp_path = tests_dir / "OWASPCheck.py"
 
-    spec = importlib.util.spec_from_file_location('owasp', str(owasp_path))
+    spec = importlib.util.spec_from_file_location("owasp", str(owasp_path))
     if spec is None:
         raise ImportError(f"Could not load spec for {owasp_path}")
     module = importlib.util.module_from_spec(spec)
-    loader = getattr(spec, 'loader', None)
+    loader = getattr(spec, "loader", None)
     if loader is None:
         raise ImportError(f"No loader available for {owasp_path}")
     loader.exec_module(module)
@@ -28,26 +29,33 @@ def load_owasp_module():
 pytestmark = pytest.mark.functional
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def tester(start_fastapi_server):
-    requests = pytest.importorskip('requests')
-    base_url = os.getenv('TEST_BASE_URL', 'http://localhost:8000')
+    requests = pytest.importorskip("requests")
+    try:
+        from backend.app.core.config import settings
+
+        base_url = settings.TEST_BASE_URL
+    except Exception:
+        base_url = "http://localhost:8000"
     # quick reachability check
     try:
-        r = requests.get(base_url + '/', timeout=3)
+        r = requests.get(base_url + "/", timeout=3)
     except Exception:
-        pytest.skip(f"Backend not reachable at {base_url}; skipping OWASP category tests")
+        pytest.skip(
+            f"Backend not reachable at {base_url}; skipping OWASP category tests"
+        )
 
     module = load_owasp_module()
-    OWASPSecurityTester = getattr(module, 'OWASPSecurityTester')
+    OWASPSecurityTester = getattr(module, "OWASPSecurityTester")
     return OWASPSecurityTester(base_url=base_url)
 
 
 def _assert_no_high_critical(issues):
-    bad = [i for i in issues if i.severity.value in ('CRITICAL', 'HIGH')]
+    bad = [i for i in issues if i.severity.value in ("CRITICAL", "HIGH")]
     if bad:
         msgs = [f"{i.title} ({i.severity.value}): {i.evidence}" for i in bad]
-        pytest.fail('\n'.join(msgs))
+        pytest.fail("\n".join(msgs))
 
 
 def test_broken_access_control(tester):

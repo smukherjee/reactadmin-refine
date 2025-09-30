@@ -27,13 +27,19 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 300
 
     # Database
-    DATABASE_URL: str = "sqlite:///./dev.db"
+    DATABASE_URL: str = "sqlite:///./db/dev.db"
 
     # Auth
     SECRET_KEY: str = "dev-secret"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     TENANT_COOKIE_NAME: str = "tenant_id"
     TENANT_COOKIE_SECURE: bool = False
+
+    # Test / tooling defaults (can be overridden via .env or TEST_BASE_URL env var)
+    TEST_BASE_URL: str = "http://localhost:8000"
+    FRONTEND_BASE_URL: str = "http://localhost:3000"
+    # Opt-in toggles for expensive or environment-dependent tests/tools
+    RUN_SECURITY_TESTS: bool = False
 
     # Security headers
     CSP_POLICY: str = "default-src 'self'"
@@ -79,12 +85,20 @@ def reload_settings() -> Settings:
         return v if v is not None else default
 
     # rate limiting
-    settings.RATE_LIMIT_ENABLED = _get_bool("RATE_LIMIT_ENABLED", settings.RATE_LIMIT_ENABLED)
-    settings.RATE_LIMIT_REQUESTS = _get_int("RATE_LIMIT_REQUESTS", settings.RATE_LIMIT_REQUESTS)
-    settings.RATE_LIMIT_WINDOW_SECONDS = _get_int("RATE_LIMIT_WINDOW_SECONDS", settings.RATE_LIMIT_WINDOW_SECONDS)
+    settings.RATE_LIMIT_ENABLED = _get_bool(
+        "RATE_LIMIT_ENABLED", settings.RATE_LIMIT_ENABLED
+    )
+    settings.RATE_LIMIT_REQUESTS = _get_int(
+        "RATE_LIMIT_REQUESTS", settings.RATE_LIMIT_REQUESTS
+    )
+    settings.RATE_LIMIT_WINDOW_SECONDS = _get_int(
+        "RATE_LIMIT_WINDOW_SECONDS", settings.RATE_LIMIT_WINDOW_SECONDS
+    )
 
     # environment
-    settings.ENVIRONMENT = _get_str("ENVIRONMENT", settings.ENVIRONMENT) or settings.ENVIRONMENT
+    settings.ENVIRONMENT = (
+        _get_str("ENVIRONMENT", settings.ENVIRONMENT) or settings.ENVIRONMENT
+    )
 
     # redis / cache
     settings.REDIS_URL = _get_str("REDIS_URL", settings.REDIS_URL) or settings.REDIS_URL
@@ -92,20 +106,38 @@ def reload_settings() -> Settings:
 
     # logging
     settings.LOG_REQUEST_BODY = _get_bool("LOG_REQUEST_BODY", settings.LOG_REQUEST_BODY)
-    settings.LOG_RESPONSE_BODY = _get_bool("LOG_RESPONSE_BODY", settings.LOG_RESPONSE_BODY)
+    settings.LOG_RESPONSE_BODY = _get_bool(
+        "LOG_RESPONSE_BODY", settings.LOG_RESPONSE_BODY
+    )
     settings.LOG_LEVEL = _get_str("LOG_LEVEL", settings.LOG_LEVEL) or settings.LOG_LEVEL
 
     # security
-    settings.CSP_POLICY = _get_str("CSP_POLICY", settings.CSP_POLICY) or settings.CSP_POLICY
+    settings.CSP_POLICY = (
+        _get_str("CSP_POLICY", settings.CSP_POLICY) or settings.CSP_POLICY
+    )
     settings.HSTS_MAX_AGE = _get_int("HSTS_MAX_AGE", settings.HSTS_MAX_AGE)
 
     # auth/db
-    settings.SECRET_KEY = _get_str("SECRET_KEY", settings.SECRET_KEY) or settings.SECRET_KEY
-    settings.DATABASE_URL = _get_str("DATABASE_URL", settings.DATABASE_URL) or settings.DATABASE_URL
+    settings.SECRET_KEY = (
+        _get_str("SECRET_KEY", settings.SECRET_KEY) or settings.SECRET_KEY
+    )
+    settings.DATABASE_URL = (
+        _get_str("DATABASE_URL", settings.DATABASE_URL) or settings.DATABASE_URL
+    )
+    # test / tooling urls
+    settings.TEST_BASE_URL = (
+        _get_str("TEST_BASE_URL", settings.TEST_BASE_URL) or settings.TEST_BASE_URL
+    )
+    settings.FRONTEND_BASE_URL = (
+        _get_str("FRONTEND_BASE_URL", settings.FRONTEND_BASE_URL)
+        or settings.FRONTEND_BASE_URL
+    )
+    settings.RUN_SECURITY_TESTS = _get_bool(
+        "RUN_SECURITY_TESTS", settings.RUN_SECURITY_TESTS
+    )
 
     return settings
 
 
 def get_settings() -> Settings:
     return settings
-

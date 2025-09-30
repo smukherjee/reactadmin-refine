@@ -1,8 +1,9 @@
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, JSON
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
 import uuid
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
 from backend.app.db.core import Base
 
@@ -20,7 +21,9 @@ class Tenant(Base):
     subscription_tier = Column(String(50))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Role(Base):
@@ -32,7 +35,9 @@ class Role(Base):
     is_system = Column(Boolean, default=False)
     client_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class User(Base):
@@ -47,7 +52,9 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     last_login = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     tenant = relationship("Tenant")
     roles = relationship("Role", secondary="user_roles", backref="users")
@@ -88,4 +95,6 @@ class Session(Base):
     user_agent = Column(String)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_activity = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_activity = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

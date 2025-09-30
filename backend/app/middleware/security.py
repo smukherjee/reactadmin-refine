@@ -1,18 +1,17 @@
+import threading
+import time
+from typing import Any, Dict
+
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
-from typing import Optional, Dict, Any
-import os
-import time
-import threading
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-from backend.app.cache import core as cache
 from backend.app.cache.async_redis import get_async_redis_client
-from backend.app.core.logging import get_logger
 from backend.app.core import config
+from backend.app.core.logging import get_logger
 
-logger = get_logger('middleware.security')
+logger = get_logger("middleware.security")
 
 
 class _InMemoryRateStore:
@@ -79,45 +78,56 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._default_max = int(kwargs.get("max_requests", 100))
         self._default_window = int(kwargs.get("window", 60))
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # read config at dispatch-time to respect runtime env changes (useful for tests)
-        # Primary: check environment variable directly (this ensures monkeypatch.setenv works)
-        env_val = os.getenv('RATE_LIMIT_ENABLED')
-        if env_val is not None:
-            if str(env_val).lower() in ('1', 'true', 'yes'):
-                enabled = True
-            elif str(env_val).lower() in ('0', 'false', 'no'):
-                enabled = False
-            else:
-                enabled = getattr(config.settings, 'RATE_LIMIT_ENABLED', False)
-        else:
-            # fallback to centralized settings
-            enabled = getattr(config.settings, 'RATE_LIMIT_ENABLED', False)
-        
-        logger.debug(f"RateLimitMiddleware dispatch: resolved enabled={enabled}, env_override={env_val}")
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        # Read centralized settings at dispatch-time to respect runtime env changes
+        # (tests can call monkeypatch.setenv then rely on reload_settings()).
+        try:
+            runtime_settings = config.reload_settings()
+        except Exception:
+            # Fallback to module-level settings if reload fails for any reason
+            runtime_settings = config.settings
+
+        enabled = bool(getattr(runtime_settings, "RATE_LIMIT_ENABLED", False))
+        logger.debug(f"RateLimitMiddleware dispatch: resolved enabled={enabled}")
 
         if not enabled:
             return await call_next(request)
 
-        max_requests = config.settings.RATE_LIMIT_REQUESTS if getattr(config.settings, 'RATE_LIMIT_REQUESTS', None) is not None else self._default_max
-        window = config.settings.RATE_LIMIT_WINDOW_SECONDS if getattr(config.settings, 'RATE_LIMIT_WINDOW_SECONDS', None) is not None else self._default_window
+        max_requests = (
+            config.settings.RATE_LIMIT_REQUESTS
+            if getattr(config.settings, "RATE_LIMIT_REQUESTS", None) is not None
+            else self._default_max
+        )
+        window = (
+            config.settings.RATE_LIMIT_WINDOW_SECONDS
+            if getattr(config.settings, "RATE_LIMIT_WINDOW_SECONDS", None) is not None
+            else self._default_window
+        )
 
         # identify client by remote address; use header override for testing/behind proxies
-        client_ip = request.headers.get("x-forwarded-for") or (request.client.host if request.client else "unknown")
+        client_ip = request.headers.get("x-forwarded-for") or (
+            request.client.host if request.client else "unknown"
+        )
         # use route path to scope counters per endpoint
         route = (request.url.path or "/").rstrip("/") or "/"
         key = f"rl:{client_ip}:{route}"
 
         # Try async Redis first, fallback to in-memory store
         redis_client = await get_async_redis_client()
-        
+
         if redis_client:
             try:
-                # Use async Redis sliding window rate limiting
-                curr, ttl = await self._async_redis_rate_limit(redis_client, key, max_requests, window)
+                # Use async Redis sliding window rate limiting (safe, bounded)
+                curr, ttl = await self._async_redis_rate_limit(
+                    redis_client, key, max_requests, window
+                )
                 backend = "async_redis"
             except Exception as e:
-                logger.warning(f"Async Redis rate limiting failed, falling back to in-memory: {e}")
+                logger.warning(
+                    f"Async Redis rate limiting failed, falling back to in-memory: {e}"
+                )
                 curr = _in_memory_store.incr(key, window)
                 ttl = _in_memory_store.ttl(key)
                 backend = "in_memory_fallback"
@@ -127,39 +137,89 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             ttl = _in_memory_store.ttl(key)
             backend = "in_memory"
 
-        logger.info(f"Rate limit backend={backend} key={key} curr={curr} ttl={ttl} max={max_requests}")
+        logger.info(
+            f"Rate limit backend={backend} key={key} curr={curr} ttl={ttl} max={max_requests}"
+        )
         if curr > max_requests:
             retry_after = ttl if ttl > 0 else window
-            logger.warning("Rate limit exceeded", extra={"client_ip": client_ip, "route": route, "limit": max_requests, "current_count": curr})
-            return JSONResponse({"detail": "Rate limit exceeded."}, status_code=429, headers={"Retry-After": str(retry_after)})
+            logger.warning(
+                "Rate limit exceeded",
+                extra={
+                    "client_ip": client_ip,
+                    "route": route,
+                    "limit": max_requests,
+                    "current_count": curr,
+                },
+            )
+            return JSONResponse(
+                {"detail": "Rate limit exceeded."},
+                status_code=429,
+                headers={"Retry-After": str(retry_after)},
+            )
 
         return await call_next(request)
-    
-    async def _async_redis_rate_limit(self, redis_client: Any, key: str, max_requests: int, window: int) -> tuple[int, int]:
+
+    async def _async_redis_rate_limit(
+        self, redis_client: Any, key: str, max_requests: int, window: int
+    ) -> tuple[int, int]:
         """Async Redis sliding window rate limiting."""
         now = time.time()
         cutoff = now - window
-        
-        # Remove old entries and count current requests in sliding window
-        pipeline = redis_client.pipeline()
-        pipeline.zremrangebyscore(key, 0, cutoff)
-        pipeline.zcard(key)
-        pipeline.zadd(key, {str(now): now})
-        pipeline.expire(key, window)
-        
-        results = await pipeline.execute()
-        current_count = results[1] + 1  # +1 for the request we just added
-        
-        # Calculate TTL for retry-after header
-        oldest_entries = await redis_client.zrange(key, 0, 0, withscores=True)
-        if oldest_entries:
-            oldest_timestamp = oldest_entries[0][1]
-            ttl = int(window - (now - oldest_timestamp))
-        else:
-            ttl = window
-        
-        return current_count, ttl
 
+        # Remove old entries and count current requests in sliding window
+        # Perform operations individually using async_safe_redis_call to bound execution
+        from backend.app.cache.async_redis import async_safe_redis_call
+
+        # Remove outdated entries
+        rem_resp = await async_safe_redis_call(
+            lambda c: c.zremrangebyscore(key, 0, cutoff), timeout=0.5
+        )
+        if not rem_resp.get("ok") and rem_resp.get("error"):
+            raise RuntimeError(
+                f"redis zremrangebyscore failed: {rem_resp.get('error')}"
+            )
+
+        # Get current cardinality
+        card_resp = await async_safe_redis_call(lambda c: c.zcard(key), timeout=0.25)
+        if not card_resp.get("ok"):
+            raise RuntimeError(f"redis zcard failed: {card_resp.get('error')}")
+        current_count = (card_resp.get("result") or 0) + 1
+
+        # Add the current timestamp
+        add_resp = await async_safe_redis_call(
+            lambda c: c.zadd(key, {str(now): now}), timeout=0.5
+        )
+        if not add_resp.get("ok"):
+            raise RuntimeError(f"redis zadd failed: {add_resp.get('error')}")
+
+        # Ensure key expiry is set
+        exp_resp = await async_safe_redis_call(
+            lambda c: c.expire(key, window), timeout=0.25
+        )
+        if not exp_resp.get("ok"):
+            # non-fatal: log and continue
+            logger.debug(f"redis expire failed for key {key}: {exp_resp.get('error')}")
+
+        # Calculate TTL for retry-after header by inspecting oldest entry
+        oldest_resp = await async_safe_redis_call(
+            lambda c: c.zrange(key, 0, 0, withscores=True), timeout=0.5
+        )
+        if not oldest_resp.get("ok"):
+            # If we couldn't fetch oldest, fall back to full window
+            ttl = window
+        else:
+            oldest_entries = oldest_resp.get("result") or []
+            if oldest_entries:
+                # oldest_entries[0] expected to be (member, score)
+                try:
+                    oldest_timestamp = oldest_entries[0][1]
+                    ttl = int(window - (now - float(oldest_timestamp)))
+                except Exception:
+                    ttl = window
+            else:
+                ttl = window
+
+        return current_count, ttl
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -195,11 +255,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
 
         # Strict-Transport-Security (HSTS)
-        if "strict-transport-security" not in {k.lower() for k in response.headers.keys()}:
-            response.headers["Strict-Transport-Security"] = f"max-age={self.hsts_max_age}; includeSubDomains"
+        if "strict-transport-security" not in {
+            k.lower() for k in response.headers.keys()
+        }:
+            response.headers["Strict-Transport-Security"] = (
+                f"max-age={self.hsts_max_age}; includeSubDomains"
+            )
 
         # Content-Security-Policy
-        if "content-security-policy" not in {k.lower() for k in response.headers.keys()}:
+        if "content-security-policy" not in {
+            k.lower() for k in response.headers.keys()
+        }:
             response.headers["Content-Security-Policy"] = self.csp
 
         # X-XSS-Protection (legacy)

@@ -1,6 +1,8 @@
 import os
 import time
+
 from fastapi.testclient import TestClient
+
 from backend.main import app
 
 
@@ -21,6 +23,7 @@ def test_rate_limit_exceeded(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "2")
     # reload centralized settings so middleware picks up the new env vars
     from backend.app.core.config import reload_settings
+
     reload_settings()
 
     import uuid

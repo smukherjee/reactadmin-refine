@@ -1,0 +1,39 @@
+[MASTER]
+ignore=backend/tools,build,dist,.venv
+jobs=1
+load-plugins=pylint.extensions.mccabe
+
+[MESSAGES CONTROL]
+disable=
+    C0114, # missing-module-docstring
+    C0115, # missing-class-docstring
+    C0116, # missing-function-docstring
+    R0903, # too-few-public-methods
+    R0902, # too-many-instance-attributes
+    W0511, # fixme
+
+[FORMAT]
+max-line-length=88
+
+[REPORTS]
+output-format = colorized
+reports = no
+
+[TYPECHECK]
+ignored-modules=redis,psutil
+
+[DESIGN]
+max-args=10
+max-locals=25
+max-returns=6
+max-branches=12
+max-statements=200
+
+[SIMILARITIES]
+min-similarity-lines=4
+
+[LOGGING]
+logging-modules=logging
+
+[REFACTORING]
+max-nested-blocks=5

@@ -3,11 +3,13 @@
 This module provides password hashing, token creation, and verification functions
 used throughout the async authentication system.
 """
-from passlib.context import CryptContext
-from jose import jwt, JWTError, ExpiredSignatureError
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, Optional
+
 import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
+
+from jose import ExpiredSignatureError, JWTError, jwt
+from passlib.context import CryptContext
 
 from backend.app.core.config import settings
 
@@ -38,24 +40,28 @@ def get_password_hash(password: str) -> str:
         if len(pw_bytes) > 72:
             pw_bytes = pw_bytes[:72]
             password = pw_bytes.decode("utf-8", errors="ignore")
-        
+
         return pwd_context.hash(password)
     except Exception as e:
         raise ValueError(f"Failed to hash password: {e}")
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    data: Dict[str, Any], expires_delta: Optional[timedelta] = None
+) -> str:
     """Create JWT access token."""
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
+
     # include a unique jti to ensure each token issuance is distinct
     to_encode.update({"exp": expire, "type": "access", "jti": str(uuid.uuid4())})
-    
+
     try:
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
@@ -63,19 +69,21 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
         raise ValueError(f"Failed to create access token: {e}")
 
 
-def create_refresh_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_refresh_token(
+    data: Dict[str, Any], expires_delta: Optional[timedelta] = None
+) -> str:
     """Create JWT refresh token."""
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         # Refresh tokens expire after 7 days by default
         expire = datetime.now(timezone.utc) + timedelta(days=7)
-    
+
     # include a unique jti to avoid deterministic refresh tokens across rapid issuances
     to_encode.update({"exp": expire, "type": "refresh", "jti": str(uuid.uuid4())})
-    
+
     try:
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt

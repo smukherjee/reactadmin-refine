@@ -1,0 +1,14 @@
+# Bandit configuration for security scanning
+skips: []
+# Paths to exclude from bandit scans
+exclude_dirs:
+  - backend/tools
+  - .venv
+  - build
+  - dist
+
+# Set severity and confidence thresholds for failures
+severity: medium
+confidence: medium
+
+# Bandit supports sections: tests, targets, etc. We keep defaults and tune in CI

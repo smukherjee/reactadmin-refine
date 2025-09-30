@@ -1,6 +1,7 @@
+from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from jose import jwt, JWTError
+
 from backend.app.core.config import settings
 
 SECRET_KEY = settings.SECRET_KEY

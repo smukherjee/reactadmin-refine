@@ -1,15 +1,17 @@
-from sqlalchemy.orm import Session
-from backend.app.models import core as models
-from backend.app.schemas import core as schemas
-from backend.app.cache import core as cache
-from passlib.context import CryptContext
-from sqlalchemy.exc import IntegrityError
-from typing import List, Optional
-import uuid
-import secrets
 import hashlib
 import hmac
-from datetime import datetime, timezone, timedelta
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+
+from passlib.context import CryptContext
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from backend.app.cache import core as cache
+from backend.app.models import core as models
+from backend.app.schemas import core as schemas
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -39,12 +41,18 @@ def create_user(db: Session, user: schemas.UserCreate):
         pw = pw_bytes.decode("utf-8", errors="ignore")
 
     hashed = pwd_context.hash(pw)
-    db_user = models.User(email=user.email, password_hash=hashed, first_name=user.first_name or "", last_name=user.last_name or "", client_id=user.client_id)
+    db_user = models.User(
+        email=user.email,
+        password_hash=hashed,
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        client_id=user.client_id,
+    )
     db.add(db_user)
     try:
         db.commit()
         db.refresh(db_user)
-        
+
         # Initialize empty cache for new user (tenant-scoped)
         try:
             cache.invalidate_user_cache(str(db_user.client_id), str(db_user.id))
@@ -60,7 +68,11 @@ def create_user(db: Session, user: schemas.UserCreate):
 def create_tenant(db: Session, tenant: schemas.TenantCreate):
     # if domain provided, return existing tenant to make idempotent in tests/dev
     if tenant.domain:
-        existing = db.query(models.Tenant).filter(models.Tenant.domain == tenant.domain).first()
+        existing = (
+            db.query(models.Tenant)
+            .filter(models.Tenant.domain == tenant.domain)
+            .first()
+        )
         if existing:
             return existing
     db_t = models.Tenant(name=tenant.name, domain=tenant.domain)
@@ -72,13 +84,22 @@ def create_tenant(db: Session, tenant: schemas.TenantCreate):
         db.rollback()
         # try to return existing by domain
         if tenant.domain:
-            return db.query(models.Tenant).filter(models.Tenant.domain == tenant.domain).first()
+            return (
+                db.query(models.Tenant)
+                .filter(models.Tenant.domain == tenant.domain)
+                .first()
+            )
         raise
     return db_t
 
 
 def create_role(db: Session, role: schemas.RoleCreate):
-    db_r = models.Role(name=role.name, description=role.description or "", permissions=role.permissions or [], client_id=role.client_id)
+    db_r = models.Role(
+        name=role.name,
+        description=role.description or "",
+        permissions=role.permissions or [],
+        client_id=role.client_id,
+    )
     db.add(db_r)
     # debug
     try:
@@ -87,7 +108,7 @@ def create_role(db: Session, role: schemas.RoleCreate):
         pass
     db.commit()
     db.refresh(db_r)
-    
+
     # Invalidate role-related caches (tenant-scoped)
     try:
         cache.invalidate_role_cache(str(db_r.client_id), str(db_r.id))
@@ -133,7 +154,7 @@ def assign_role_to_user(db: Session, user_id, role_id, assigned_by=None):
     try:
         db.commit()
         db.refresh(ur)
-        
+
         # Invalidate user's permission cache (tenant-scoped)
         # need user's tenant id; load user
         try:
@@ -152,6 +173,7 @@ def assign_role_to_user(db: Session, user_id, role_id, assigned_by=None):
 
 def get_user_permissions(db: Session, user_id) -> List[str]:
     from datetime import datetime, timezone
+
     # normalize user_id strings to UUID for UUID columns
     if isinstance(user_id, str):
         try:
@@ -188,7 +210,7 @@ def get_user_permissions(db: Session, user_id) -> List[str]:
             perms.extend(p)
     # deduplicate
     dedup = list(set(perms))
-    
+
     # Cache the result (tenant-scoped)
     if client_id_val is not None:
         try:
@@ -204,12 +226,25 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_session(db: Session, user_id, client_id, access_token: str, refresh_token: str, expires_at: datetime, ip_address: Optional[str] = None, user_agent: Optional[str] = None):
+def create_session(
+    db: Session,
+    user_id,
+    client_id,
+    access_token: str,
+    refresh_token: str,
+    expires_at: datetime,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+):
     """Create a Session row storing token and refresh hashes."""
     token_hash = _hash_token(access_token)
     refresh_hash = _hash_token(refresh_token)
     # If a session already exists for this refresh hash, update it to avoid unique constraint errors
-    existing = db.query(models.Session).filter(models.Session.refresh_token_hash == refresh_hash).first()
+    existing = (
+        db.query(models.Session)
+        .filter(models.Session.refresh_token_hash == refresh_hash)
+        .first()
+    )
 
     if existing:
         setattr(existing, "user_id", user_id)
@@ -229,7 +264,15 @@ def create_session(db: Session, user_id, client_id, access_token: str, refresh_t
             pass
         return existing
 
-    s = models.Session(user_id=user_id, token_hash=token_hash, refresh_token_hash=refresh_hash, client_id=client_id, ip_address=ip_address, user_agent=user_agent, expires_at=expires_at)
+    s = models.Session(
+        user_id=user_id,
+        token_hash=token_hash,
+        refresh_token_hash=refresh_hash,
+        client_id=client_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        expires_at=expires_at,
+    )
     db.add(s)
     db.commit()
     db.refresh(s)
@@ -244,7 +287,14 @@ def create_session(db: Session, user_id, client_id, access_token: str, refresh_t
 def get_session_by_refresh_hash(db: Session, refresh_hash: str):
     """Return a session matching the refresh_token_hash if not expired."""
     now = datetime.now(timezone.utc)
-    return db.query(models.Session).filter(models.Session.refresh_token_hash == refresh_hash, models.Session.expires_at > now).first()
+    return (
+        db.query(models.Session)
+        .filter(
+            models.Session.refresh_token_hash == refresh_hash,
+            models.Session.expires_at > now,
+        )
+        .first()
+    )
 
 
 def get_session_by_id(db: Session, session_id):
@@ -288,7 +338,13 @@ def revoke_all_sessions(db: Session, user_id):
     return True
 
 
-def rotate_refresh_token(db: Session, session_id, new_access_token: str, new_refresh_token: str, new_expires_at: datetime):
+def rotate_refresh_token(
+    db: Session,
+    session_id,
+    new_access_token: str,
+    new_refresh_token: str,
+    new_expires_at: datetime,
+):
     """Rotate refresh token for a session: update stored hashes and expiry."""
     s = get_session_by_id(db, session_id)
     if not s:
@@ -339,12 +395,13 @@ def remove_user_role(db: Session, user_id, role_id):
             role_id = uuid.UUID(role_id)
         except Exception:
             pass
-    
-    ur = db.query(models.UserRole).filter(
-        models.UserRole.user_id == user_id,
-        models.UserRole.role_id == role_id
-    ).first()
-    
+
+    ur = (
+        db.query(models.UserRole)
+        .filter(models.UserRole.user_id == user_id, models.UserRole.role_id == role_id)
+        .first()
+    )
+
     if ur:
         db.delete(ur)
         db.commit()
@@ -358,7 +415,7 @@ def remove_user_role(db: Session, user_id, role_id):
         except Exception:
             pass
         return True
-    
+
     return False
 
 
@@ -371,7 +428,17 @@ def list_users_by_tenant(db: Session, client_id):
     return db.query(models.User).filter(models.User.client_id == client_id).all()
 
 
-def create_audit_log(db: Session, client_id, action, user_id=None, resource_type=None, resource_id=None, changes=None, ip_address=None, user_agent=None):
+def create_audit_log(
+    db: Session,
+    client_id,
+    action,
+    user_id=None,
+    resource_type=None,
+    resource_id=None,
+    changes=None,
+    ip_address=None,
+    user_agent=None,
+):
     # normalize client_id to UUID if provided as string
     if isinstance(client_id, str):
         try:
@@ -389,7 +456,16 @@ def create_audit_log(db: Session, client_id, action, user_id=None, resource_type
             resource_id = uuid.UUID(resource_id)
         except Exception:
             pass
-    al = models.AuditLog(client_id=client_id, user_id=user_id, action=action, resource_type=resource_type, resource_id=resource_id, changes=changes or {}, ip_address=ip_address, user_agent=user_agent)
+    al = models.AuditLog(
+        client_id=client_id,
+        user_id=user_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        changes=changes or {},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     db.add(al)
     db.commit()
     db.refresh(al)

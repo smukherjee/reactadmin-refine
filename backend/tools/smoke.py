@@ -8,17 +8,18 @@ It expects the app to be importable from backend.app.main.core:app. The script
 is named so pytest won't accidentally collect it as a test module.
 """
 
-from fastapi.testclient import TestClient
 import os
 import sys
+
+from fastapi.testclient import TestClient
 
 # Ensure repo root is on path when invoked as a script
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from app.main.core import app
 from app.core.config import settings
+from app.main.core import app
 
 client = TestClient(app)
 

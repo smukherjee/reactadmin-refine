@@ -1,27 +1,39 @@
 import os
 import sys
 import tempfile
+
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Ensure project root is on sys.path so `backend` package is importable
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 # Force tests to use a file-backed SQLite DB so both sync and async engines
 # created at import-time (in backend.app.db.core) and in-test engines share
 # the same database state. We create a temporary .db file and set
 # DATABASE_URL before importing the application modules.
-tmp_db_path = os.environ.get('TEST_SQLITE_DB_PATH')
+tmp_db_path = os.environ.get("TEST_SQLITE_DB_PATH")
 if not tmp_db_path:
-    tmp_file = tempfile.NamedTemporaryFile(prefix='test_db_', suffix='.db', delete=False)
+    tmp_file = tempfile.NamedTemporaryFile(
+        prefix="test_db_", suffix=".db", delete=False
+    )
     tmp_db_path = tmp_file.name
     tmp_file.close()
-os.environ['DATABASE_URL'] = f"sqlite:///{tmp_db_path}"
-
+os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db_path}"
 from backend.main import app
+
+# Ensure module-level settings reflect the test DATABASE_URL so modules that
+# import settings at module import-time pick up the test DB URL. This is safe
+# because tests set DATABASE_URL before importing application modules above.
+try:
+    from backend.app.core import config as _config
+
+    _config.reload_settings()
+except Exception:
+    pass
 from backend.app.db.core import Base, get_db
 
 # Clear in-memory rate limiter state between tests to avoid flakiness
@@ -40,7 +52,7 @@ def in_memory_engine():
     # Create a file-backed SQLite DB for the whole test session so both sync
     # and async engines (which are created during app import) point to the
     # same file and see the same data.
-    database_url = os.environ.get('DATABASE_URL', "sqlite:///:memory:")
+    database_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
     engine = create_engine(
         database_url,
         connect_args={"check_same_thread": False},
@@ -51,7 +63,9 @@ def in_memory_engine():
 
 @pytest.fixture(scope="function")
 def db_session(in_memory_engine):
-    SessionTesting = sessionmaker(bind=in_memory_engine, autoflush=False, autocommit=False)
+    SessionTesting = sessionmaker(
+        bind=in_memory_engine, autoflush=False, autocommit=False
+    )
     session = SessionTesting()
     try:
         yield session
@@ -60,12 +74,13 @@ def db_session(in_memory_engine):
         session.close()
 
 
-@pytest.fixture(scope="function") 
+@pytest.fixture(scope="function")
 def client(monkeypatch, db_session, in_memory_engine):
     # Clear cache before each test
     from backend.app.cache import core as cache
+
     cache.clear_all_cache()
-    
+
     # For request handling we create a fresh Session bound to the in-memory engine so
     # each request runs in its own session and sees committed state from test setup.
     from sqlalchemy.orm import sessionmaker
@@ -84,7 +99,7 @@ def client(monkeypatch, db_session, in_memory_engine):
     return TestClient(app)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def start_fastapi_server():
     """Start a real HTTP server for tests that use `requests`.
 
@@ -105,34 +120,47 @@ def start_fastapi_server():
     # find a free port
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('127.0.0.1', 0))
+    s.bind(("127.0.0.1", 0))
     host, port = s.getsockname()
     s.close()
 
     try:
         import uvicorn
     except Exception:
-        pytest.skip('uvicorn not installed in test environment; cannot start HTTP server')
+        pytest.skip(
+            "uvicorn not installed in test environment; cannot start HTTP server"
+        )
 
-    config = uvicorn.Config(fastapi_app, host='127.0.0.1', port=port, log_level='warning', loop='asyncio')
+    config = uvicorn.Config(
+        fastapi_app, host="127.0.0.1", port=port, log_level="warning", loop="asyncio"
+    )
     server = uvicorn.Server(config)
 
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
 
-    base_url = f'http://127.0.0.1:{port}'
+    base_url = f"http://127.0.0.1:{port}"
     # wait for server to become ready
     import requests
+
     ready = False
     for _ in range(50):
         try:
-            r = requests.get(base_url + '/', timeout=0.5)
+            r = requests.get(base_url + "/", timeout=0.5)
             ready = True
             break
         except Exception:
             time.sleep(0.1)
 
-    os.environ['TEST_BASE_URL'] = base_url
+    os.environ["TEST_BASE_URL"] = base_url
+
+    # Ensure settings reflect the runtime test base URL for tools/tests that import settings
+    try:
+        from backend.app.core import config as _config
+
+        _config.reload_settings()
+    except Exception:
+        pass
 
     if not ready:
         pytest.skip(f"FastAPI server did not become ready at {base_url}")

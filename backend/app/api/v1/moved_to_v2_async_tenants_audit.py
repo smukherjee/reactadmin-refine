@@ -5,4 +5,6 @@ Importing this module will raise an ImportError directing developers to the
 new location.
 """
 
-raise ImportError("api.v1.async_tenants_audit has been moved to api.v2.async_tenants_audit")
+raise ImportError(
+    "api.v1.async_tenants_audit has been moved to api.v2.async_tenants_audit"
+)

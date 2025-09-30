@@ -1,0 +1,12 @@
+{
+  "name": "reactadmin-refine",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "jscpd": "jscpd ./ --reporters console --threshold 10 --languages python,javascript",
+    "jscpd:json": "jscpd ./ --reporters json --output ./jscpd-report.json"
+  },
+  "devDependencies": {
+    "jscpd": "^3.4.0"
+  }
+}

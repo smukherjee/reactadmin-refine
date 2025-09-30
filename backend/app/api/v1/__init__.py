@@ -1,5 +1,7 @@
 from fastapi import APIRouter
+
 from .sync_core import router as sync_router
+
 # Note: v1 is now intended to only expose synchronous (legacy) endpoints.
 # Async routers have been moved into api.v2. Keep v1 focused on sync routes.
 
@@ -28,6 +30,6 @@ def api_v1_info():
             # Tenants and audit are implemented as async v2 endpoints
             "tenants": "🚀 /api/v2/tenants",
             "audit": "🚀 /api/v2/audit-logs",
-            "cache": "/api/v1/cache"
-        }
+            "cache": "/api/v1/cache",
+        },
     }
