@@ -10,6 +10,8 @@ import os
 from typing import Optional, List, Any, Dict, Union, Callable, cast
 import redis
 from redis import Redis
+import redis.asyncio as redis_async
+from typing import Optional
 import uuid
 import logging
 
@@ -26,6 +28,8 @@ INVALIDATION_CHANNEL = "app:cache-invalidate"
 
 # Redis client instance (use Any at runtime but cast to Redis where needed)
 redis_client: Optional[Any] = None
+# Async async-redis client (created during app startup)
+async_redis_client: Optional[redis_async.Redis] = None
 _pubsub_thread_started = False
 
 
@@ -45,6 +49,11 @@ def get_redis_client() -> Optional[Any]:
         logger.debug(f"Redis connection unavailable: {e}")
         redis_client = None
         return None
+
+
+def get_async_redis_client() -> Optional[redis_async.Redis]:
+    """Return the module-level async redis client if available."""
+    return async_redis_client
 
 
 def is_redis_available() -> bool:

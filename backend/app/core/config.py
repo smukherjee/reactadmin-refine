@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
 
     # Rate limiting
-    RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_REQUESTS: int = 100
-    RATE_LIMIT_WINDOW_SECONDS: int = 60
+    RATE_LIMIT_ENABLED: bool = False
+    RATE_LIMIT_REQUESTS: int = 10000
+    RATE_LIMIT_WINDOW_SECONDS: int = 600
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

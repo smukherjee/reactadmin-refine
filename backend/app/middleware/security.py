@@ -7,6 +7,7 @@ import time
 import threading
 
 from backend.app.cache import core as cache
+from backend.app.cache.async_redis import get_async_redis_client
 from backend.app.core.logging import get_logger
 from backend.app.core import config
 
@@ -106,73 +107,57 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         route = (request.url.path or "/").rstrip("/") or "/"
         key = f"rl:{client_ip}:{route}"
 
-        rc = cache.get_redis_client()
-        try:
-            # Use Redis scripted atomic increment+ttl only in non-development environments
-            if rc and config.settings.ENVIRONMENT != "development":
-                # Sliding-window limiter using Redis sorted set (ZADD, ZREMRANGEBYSCORE, ZCOUNT)
-                # We store timestamps (milliseconds) as score and member.
-                now_ms = int(time.time() * 1000)
-                window_ms = int(window * 1000)
-                min_score = now_ms - window_ms
-                try:
-                    # Use pipeline for atomic-ish behavior
-                    pipe = rc.pipeline()
-                    # Add current timestamp
-                    pipe.zadd(key, {str(now_ms): now_ms})
-                    # Remove old entries
-                    pipe.zremrangebyscore(key, 0, min_score)
-                    # Count current window
-                    pipe.zcard(key)
-                    # Set expire to window seconds
-                    pipe.expire(key, window)
-                    results = pipe.execute()
-                    # results: [zadd, zremrange, zcard, expire]
-                    curr = int(results[2])
-                    ttl = rc.ttl(key) or window
-                except Exception:
-                    # fallback to simple increment behavior
-                    curr = rc.incr(key)
-                    if curr == 1:
-                        try:
-                            rc.expire(key, window)
-                        except Exception:
-                            pass
-                    ttl = rc.ttl(key) or window
-            else:
-                # development or no redis: approximate sliding-window using dedicated in-memory timestamps
-                now_ms = int(time.time() * 1000)
-                curr = 0
-                with _in_memory_window_lock:
-                    entry = _in_memory_window_store.get(key)
-                    if entry is None:
-                        # store as (timestamps_list, expires_at)
-                        expiry = time.time() + window
-                        _in_memory_window_store[key] = ([now_ms], expiry)
-                        curr = 1
-                    else:
-                        timestamps, expiry = entry
-                        cutoff = now_ms - int(window * 1000)
-                        # keep timestamps within window
-                        timestamps = [t for t in timestamps if t > cutoff]
-                        timestamps.append(now_ms)
-                        expiry = time.time() + window
-                        _in_memory_window_store[key] = (timestamps, expiry)
-                        curr = len(timestamps)
-                    ttl = int(_in_memory_window_store[key][1] - time.time())
+        # Try async Redis first, fallback to in-memory store
+        redis_client = await get_async_redis_client()
+        
+        if redis_client:
+            try:
+                # Use async Redis sliding window rate limiting
+                curr, ttl = await self._async_redis_rate_limit(redis_client, key, max_requests, window)
+                backend = "async_redis"
+            except Exception as e:
+                logger.warning(f"Async Redis rate limiting failed, falling back to in-memory: {e}")
+                curr = _in_memory_store.incr(key, window)
+                ttl = _in_memory_store.ttl(key)
+                backend = "in_memory_fallback"
+        else:
+            # Use in-memory store when Redis not available
+            curr = _in_memory_store.incr(key, window)
+            ttl = _in_memory_store.ttl(key)
+            backend = "in_memory"
 
-                
-            # Check rate limit regardless of Redis or in-memory implementation
-            if curr > max_requests:
-                retry_after = ttl if ttl > 0 else window
-                logger.warning("Rate limit exceeded", extra={"client_ip": client_ip, "route": route, "limit": max_requests, "current_count": curr})
-                return JSONResponse({"detail": "Rate limit exceeded."}, status_code=429, headers={"Retry-After": str(retry_after)})
-                
-        except Exception as e:
-            # Fail-open on errors to avoid blocking traffic
-            logger.warning(f"Rate limiting failed-open due to error: {e}")
+        logger.info(f"Rate limit backend={backend} key={key} curr={curr} ttl={ttl} max={max_requests}")
+        if curr > max_requests:
+            retry_after = ttl if ttl > 0 else window
+            logger.warning("Rate limit exceeded", extra={"client_ip": client_ip, "route": route, "limit": max_requests, "current_count": curr})
+            return JSONResponse({"detail": "Rate limit exceeded."}, status_code=429, headers={"Retry-After": str(retry_after)})
 
         return await call_next(request)
+    
+    async def _async_redis_rate_limit(self, redis_client, key: str, max_requests: int, window: int) -> tuple[int, int]:
+        """Async Redis sliding window rate limiting."""
+        now = time.time()
+        cutoff = now - window
+        
+        # Remove old entries and count current requests in sliding window
+        pipeline = redis_client.pipeline()
+        pipeline.zremrangebyscore(key, 0, cutoff)
+        pipeline.zcard(key)
+        pipeline.zadd(key, {str(now): now})
+        pipeline.expire(key, window)
+        
+        results = await pipeline.execute()
+        current_count = results[1] + 1  # +1 for the request we just added
+        
+        # Calculate TTL for retry-after header
+        oldest_entries = await redis_client.zrange(key, 0, 0, withscores=True)
+        if oldest_entries:
+            oldest_timestamp = oldest_entries[0][1]
+            ttl = int(window - (now - oldest_timestamp))
+        else:
+            ttl = window
+        
+        return current_count, ttl
 
 
 

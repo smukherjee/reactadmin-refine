@@ -49,6 +49,14 @@ class UserCreate(UserBase):
     client_id: UUID
 
 
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_verified: Optional[bool] = None
+
+
 class UserOut(UserBase):
     id: UUID
     client_id: UUID

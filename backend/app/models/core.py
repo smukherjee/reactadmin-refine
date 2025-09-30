@@ -50,6 +50,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     tenant = relationship("Tenant")
+    roles = relationship("Role", secondary="user_roles", backref="users")
 
 
 class UserRole(Base):
