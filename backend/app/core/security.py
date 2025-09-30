@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from jose import jwt, JWTError, ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
+import uuid
 
 from backend.app.core.config import settings
 
@@ -52,7 +53,8 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    to_encode.update({"exp": expire, "type": "access"})
+    # include a unique jti to ensure each token issuance is distinct
+    to_encode.update({"exp": expire, "type": "access", "jti": str(uuid.uuid4())})
     
     try:
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -71,7 +73,8 @@ def create_refresh_token(data: Dict[str, Any], expires_delta: Optional[timedelta
         # Refresh tokens expire after 7 days by default
         expire = datetime.now(timezone.utc) + timedelta(days=7)
     
-    to_encode.update({"exp": expire, "type": "refresh"})
+    # include a unique jti to avoid deterministic refresh tokens across rapid issuances
+    to_encode.update({"exp": expire, "type": "refresh", "jti": str(uuid.uuid4())})
     
     try:
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

@@ -10,6 +10,16 @@ from sqlalchemy.orm import sessionmaker
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
+# Force tests to use a file-backed SQLite DB so both sync and async engines
+# created at import-time (in backend.app.db.core) and in-test engines share
+# the same database state. We create a temporary .db file and set
+# DATABASE_URL before importing the application modules.
+tmp_db_path = os.environ.get('TEST_SQLITE_DB_PATH')
+if not tmp_db_path:
+    tmp_file = tempfile.NamedTemporaryFile(prefix='test_db_', suffix='.db', delete=False)
+    tmp_db_path = tmp_file.name
+    tmp_file.close()
+os.environ['DATABASE_URL'] = f"sqlite:///{tmp_db_path}"
 
 from backend.main import app
 from backend.app.db.core import Base, get_db
@@ -27,12 +37,13 @@ def clear_rate_limit_store_between_tests():
 
 @pytest.fixture(scope="session")
 def in_memory_engine():
-    # create a fresh in-memory SQLite DB for the whole test session
-    # Use StaticPool so the same in-memory database is shared across connections/sessions
+    # Create a file-backed SQLite DB for the whole test session so both sync
+    # and async engines (which are created during app import) point to the
+    # same file and see the same data.
+    database_url = os.environ.get('DATABASE_URL', "sqlite:///:memory:")
     engine = create_engine(
-        "sqlite:///:memory:",
+        database_url,
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=engine)
     return engine

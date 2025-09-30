@@ -27,6 +27,7 @@ router = APIRouter(tags=["Cache & System"])
 # CACHE MANAGEMENT ENDPOINTS
 # ================================
 
+
 @router.get("/cache/status")
 async def async_get_cache_status(
     db: AsyncSession = Depends(get_async_db),
@@ -188,6 +189,7 @@ async def async_delete_cache_key(
 # ================================
 # SYSTEM MONITORING ENDPOINTS
 # ================================
+
 
 @router.get("/system/health")
 async def async_get_system_health(

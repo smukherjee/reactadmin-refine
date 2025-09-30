@@ -86,7 +86,6 @@ class TestAsyncTenantAuditAPIs:
         assert "created_at" in tenant
 
         print(f"✅ Created tenant: {tenant['name']} (ID: {tenant['id']})")
-        return tenant
     
     def test_create_tenant_idempotent(self):
         """Test tenant creation is idempotent by domain."""
@@ -172,13 +171,37 @@ class TestAsyncTenantAuditAPIs:
         assert "created_at" in audit_log
         
         print(f"✅ Created audit log: {audit_log['action']} (ID: {audit_log['id']})")
+
+    def create_audit_log(self):
+        """Helper to create and return an audit log and tenant for other tests.
+
+        This is a helper (not a test) so it can be used by other test methods
+        without confusing pytest about return values.
+        """
+        tenant, user = self.create_test_tenant_and_user()
+        token = self.get_admin_token(tenant["id"])
+        headers = {"Authorization": f"Bearer {token}"}
+
+        changes_data = {"field1": "old_value", "field2": "new_value"}
+        params = {
+            "action": "user_created",
+            "client_id": tenant["id"],
+            "user_id": user["id"],
+            "resource_type": "user",
+            "resource_id": user["id"],
+            "changes_json": json.dumps(changes_data)
+        }
+
+        response = client.post("/api/v2/audit-logs", params=params, headers=headers)
+        assert response.status_code == 200
+        audit_log = response.json()
         return audit_log, tenant
     
     def test_list_audit_logs_with_filtering(self):
         """Test listing audit logs with filtering."""
         # Create tenant and audit log
-        audit_log, tenant = self.test_create_audit_log_async()
-        
+        audit_log, tenant = self.create_audit_log()
+
         # Get admin token
         token = self.get_admin_token(tenant["id"])
         headers = {"Authorization": f"Bearer {token}"}
@@ -202,8 +225,8 @@ class TestAsyncTenantAuditAPIs:
     def test_audit_statistics(self):
         """Test audit log statistics endpoint."""
         # Create tenant and audit log
-        audit_log, tenant = self.test_create_audit_log_async()
-        
+        audit_log, tenant = self.create_audit_log()
+
         # Get admin token
         token = self.get_admin_token(tenant["id"])
         headers = {"Authorization": f"Bearer {token}"}

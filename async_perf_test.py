@@ -6,7 +6,7 @@ import aiohttp
 import json
 from typing import List
 
-async def test_endpoint(session: aiohttp.ClientSession, url: str) -> dict:
+async def perf_endpoint(session: aiohttp.ClientSession, url: str) -> dict:
     """Test a single endpoint and measure response time."""
     start_time = time.time()
     try:
@@ -43,7 +43,7 @@ async def run_concurrent_requests(base_url: str, endpoints: List[str], concurren
         for i in range(iterations):
             for endpoint in endpoints:
                 url = f"{base_url}{endpoint}"
-                tasks_batch = [test_endpoint(session, url) for _ in range(concurrency)]
+                tasks_batch = [perf_endpoint(session, url) for _ in range(concurrency)]
                 all_tasks.extend(tasks_batch)
         
         print(f"Running {len(all_tasks)} total requests...")

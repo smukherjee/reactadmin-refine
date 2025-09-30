@@ -24,7 +24,7 @@ def test_refresh_cookie_flags_on_login():
     # login sets an HttpOnly refresh_token cookie; test that cookie flags are present
     client = TestClient(app)
     # use bogus credentials (should return 401) but TestClient still captures cookies if set
-    r = client.post("/auth/login", data={"email": "nonexistent@example.com", "password": "bad", "client_id": "000"})
+    r = client.post("/api/v1/auth/login", data={"email": "nonexistent@example.com", "password": "bad", "client_id": "000"})
     # Expect 401 for invalid credentials (or 400/422 depending on validation) but ensure no 500
     assert r.status_code in (400, 401, 422)
     # If cookies present, ensure refresh_token is HttpOnly (server uses HttpOnly for refresh_token)
@@ -39,7 +39,7 @@ def test_refresh_cookie_flags_on_login():
 def test_sql_injection_attempt_does_not_crash():
     client = TestClient(app)
     payload = {"email": "' OR '1'='1@example.com", "password": "x', ' OR '1'='1", "client_id": "000"}
-    r = client.post("/auth/login", data=payload)
+    r = client.post("/api/v1/auth/login", data=payload)
     # Application should not return 500 for crafted input; expect handled auth failure or validation error
     assert r.status_code != 500
 
@@ -90,8 +90,8 @@ def test_insecure_deserialization_and_malformed_payloads(client):
 def test_jwt_and_token_hardening(client):
     # Create tenant and user and obtain JWT
     t = client.post('/api/v1/tenants', json={'name': 'JWTTest', 'domain': 'jwt.local'}).json()
-    client.post('/users', json={'email': 'jwt@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'J', 'last_name': 'W'})
-    l = client.post('/auth/login', params={'email': 'jwt@example.com', 'password': 'pass1234', 'client_id': t['id']})
+    client.post('/api/v1/users', json={'email': 'jwt@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'J', 'last_name': 'W'})
+    l = client.post('/api/v1/auth/login', params={'email': 'jwt@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert l.status_code == 200
     token = l.json().get('access_token')
     assert token
@@ -99,7 +99,7 @@ def test_jwt_and_token_hardening(client):
     parts = token.split('.')
     if len(parts) == 3:
         tampered = parts[0] + '.' + parts[1] + '.tampered'
-        r = client.get('/auth/sessions', headers={'Authorization': f'Bearer {tampered}'})
+        r = client.get('/api/v1/auth/sessions', headers={'Authorization': f'Bearer {tampered}'})
         assert r.status_code in (401, 403)
 
 

@@ -16,9 +16,13 @@ backend_path = Path(__file__).parent.parent / "backend" / "src"
 sys.path.insert(0, str(backend_path))
 
 try:
+    # Prefer tools/owasp/ copy first when running as a developer tool
+    repo_root = Path(__file__).resolve().parents[2]
+    tools_owasp = repo_root / 'tools' / 'owasp'
+    sys.path.insert(0, str(tools_owasp))
     from OWASPCheck import OWASPSecurityTester
-except ImportError:
-    # If running from different location, try alternative import
+except Exception:
+    # Fall back to local tests directory
     sys.path.insert(0, os.path.dirname(__file__))
     from OWASPCheck import OWASPSecurityTester
 
@@ -33,6 +37,7 @@ def check_dependencies():
         print("Please install dependencies with: pip install -r ../requirements.txt")
         print("(Security testing dependencies are now integrated in main requirements.txt)")
         return False
+    pytestmark = pytest.mark.functional
 
 def check_application_status():
     """Check if the application is running"""

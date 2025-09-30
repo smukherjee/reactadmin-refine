@@ -14,12 +14,12 @@ client = TestClient(app)
 
 
 def test_create_tenant_and_user():
-    r = client.post("/tenants", json={"name": "Acme Corp", "domain": "acme.local"})
+    r = client.post("/api/v1/tenants", json={"name": "Acme Corp", "domain": "acme.local"})
     assert r.status_code == 200
     tenant = r.json()
     assert tenant["name"] == "Acme Corp"
 
-    r2 = client.post("/users", json={"email": "alice@example.com", "password": "pass1234", "client_id": tenant["id"], "first_name": "Alice", "last_name": "Example"})
+    r2 = client.post("/api/v1/users", json={"email": "alice@example.com", "password": "pass1234", "client_id": tenant["id"], "first_name": "Alice", "last_name": "Example"})
     assert r2.status_code == 200
     user = r2.json()
     assert user["email"] == "alice@example.com"

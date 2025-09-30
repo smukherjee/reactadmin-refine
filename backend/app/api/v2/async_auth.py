@@ -3,7 +3,7 @@
 This module provides async FastAPI routes for authentication operations,
 including login, token refresh, logout, and session management.
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, EmailStr
@@ -12,8 +12,13 @@ import uuid
 
 from backend.app.db.core import get_async_db
 from backend.app.repositories.auth import get_auth_repository, AsyncAuthRepository
+from fastapi.responses import JSONResponse
+from backend.app.core.config import settings
+from datetime import datetime, timezone
+import secrets
 from backend.app.core.logging import get_logger
 from backend.app.models.core import User
+from backend.app.auth.core import decode_token
 
 logger = get_logger(__name__)
 security = HTTPBearer()
@@ -71,24 +76,53 @@ def get_client_info(request: Request) -> tuple:
 
 @router.post("/login", response_model=LoginResponse)
 async def async_login(
-    login_data: LoginRequest,
     request: Request,
+    login_data: Optional[LoginRequest] = Body(None),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Authenticate user and create session (async)."""
     try:
         auth_repo = await get_auth_repository(db)
-        
-        # Generate client ID if not provided
-        client_id = uuid.uuid4() if not login_data.client_id else uuid.UUID(login_data.client_id)
-        
+
+        # Support legacy v1 usage where parameters are passed as query/form params
+        if login_data is None:
+            # Try query params first
+            qp = request.query_params
+            email = qp.get('email')
+            password = qp.get('password')
+            client_id_str = qp.get('client_id')
+            # If not in query, try form body
+            if not email or not password:
+                try:
+                    form = await request.form()
+                    email = email or form.get('email')
+                    password = password or form.get('password')
+                    client_id_str = client_id_str or form.get('client_id')
+                except Exception:
+                    pass
+            # coerce UploadFile values to str when form parsing returns UploadFile
+            if isinstance(email, UploadFile):
+                email = getattr(email, 'filename', None) or str(email)
+            if isinstance(password, UploadFile):
+                password = getattr(password, 'filename', None) or str(password)
+            if isinstance(client_id_str, UploadFile):
+                client_id_str = getattr(client_id_str, 'filename', None) or str(client_id_str)
+
+            if not email or not password:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="email and password required")
+            client_id = uuid.UUID(client_id_str) if client_id_str else uuid.uuid4()
+        else:
+            client_id = uuid.uuid4() if not login_data.client_id else uuid.UUID(login_data.client_id)
+            email = login_data.email
+            password = login_data.password
+
         # Get client info
         ip_address, user_agent = get_client_info(request)
-        
+
         # Authenticate
         user, session, access_token, refresh_token = await auth_repo.authenticate_user(
-            email=login_data.email,
-            password=login_data.password,
+            email=email,
+            password=password,
             client_id=client_id,
             ip_address=ip_address,
             user_agent=user_agent
@@ -110,13 +144,19 @@ async def async_login(
             "tenant_id": str(user.client_id),
             "roles": [role.name for role in user.roles] if user.roles else []
         }
-        
-        return LoginResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            user=user_data,
-            session_id=str(session.id)
-        )
+
+        # Return JSONResponse and set cookies to be compatible with v1 behavior
+        resp = JSONResponse({
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user_data,
+            "session_id": str(session.id),
+        })
+        # set cookies similar to sync implementation
+        resp.set_cookie("refresh_token", refresh_token, httponly=True, secure=False, samesite='lax', max_age=30 * 24 * 60 * 60)
+        resp.set_cookie("session_id", str(session.id), httponly=False, secure=False, samesite='lax', max_age=30 * 24 * 60 * 60)
+        resp.set_cookie(settings.TENANT_COOKIE_NAME, str(user.client_id), httponly=False, secure=settings.TENANT_COOKIE_SECURE, samesite='lax', max_age=30 * 24 * 60 * 60)
+        return resp
         
     except HTTPException:
         raise
@@ -130,20 +170,28 @@ async def async_login(
 
 @router.post("/refresh", response_model=RefreshResponse)
 async def async_refresh_token(
-    refresh_data: RefreshRequest,
     request: Request,
     db: AsyncSession = Depends(get_async_db),
 ):
     """Refresh access tokens (async)."""
     try:
         auth_repo = await get_auth_repository(db)
-        
-        # Generate client ID if not provided
-        client_id = uuid.uuid4() if not refresh_data.client_id else uuid.UUID(refresh_data.client_id)
-        
+
+        # Read refresh token from cookie to be compatible with v1
+        refresh_token = request.cookies.get('refresh_token')
+        if not refresh_token:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='refresh_token cookie required')
+        tenant_cookie = request.cookies.get(settings.TENANT_COOKIE_NAME)
+        if not tenant_cookie:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='tenant_id cookie required')
+        try:
+            client_id = uuid.UUID(tenant_cookie)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid tenant id in cookie')
+
         # Refresh tokens
         user, session, access_token, refresh_token = await auth_repo.refresh_tokens(
-            refresh_token=refresh_data.refresh_token,
+            refresh_token=refresh_token,
             client_id=client_id
         )
         
@@ -153,10 +201,15 @@ async def async_refresh_token(
                 detail="Invalid refresh token"
             )
         
-        return RefreshResponse(
-            access_token=access_token,
-            refresh_token=refresh_token
-        )
+        # Return JSONResponse and set cookies to match v1 behavior
+        resp = JSONResponse({
+            "access_token": access_token,
+            "token_type": "bearer",
+        })
+        resp.set_cookie("refresh_token", refresh_token, httponly=True, secure=False, samesite='lax', max_age=30 * 24 * 60 * 60)
+        resp.set_cookie("session_id", str(session.id), httponly=False, secure=False, samesite='lax', max_age=30 * 24 * 60 * 60)
+        resp.set_cookie(settings.TENANT_COOKIE_NAME, str(session.client_id), httponly=False, secure=settings.TENANT_COOKIE_SECURE, samesite='lax', max_age=30 * 24 * 60 * 60)
+        return resp
         
     except HTTPException:
         raise
@@ -208,6 +261,7 @@ async def async_logout(
 
 @router.post("/logout-all", response_model=LogoutResponse)
 async def async_logout_all(
+    request: Request,
     user_id: str,
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -215,6 +269,21 @@ async def async_logout_all(
     try:
         auth_repo = await get_auth_repository(db)
         
+        # If user_id not supplied (v1-style), derive it from Authorization header
+        if not user_id:
+            auth_header = request.headers.get('authorization') or request.headers.get('Authorization')
+            if not auth_header:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Missing Authorization header')
+            try:
+                token = auth_header.split()[1]
+                payload = decode_token(token)
+                user_id = payload.get('sub')
+            except Exception:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token')
+
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token payload')
+
         user_uuid = uuid.UUID(user_id)
         revoked_count = await auth_repo.logout_all_sessions(user_uuid)
         
@@ -238,13 +307,26 @@ async def async_logout_all(
 
 @router.get("/sessions", response_model=List[SessionInfo])
 async def async_get_sessions(
-    user_id: str,
+    request: Request,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get all active sessions for user (async)."""
     try:
         auth_repo = await get_auth_repository(db)
         
+        # If no user_id query param provided, derive from Authorization bearer token
+        if not user_id:
+            auth_header = request.headers.get('authorization') or request.headers.get('Authorization')
+            if not auth_header:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Missing Authorization header')
+            try:
+                token = auth_header.split()[1]
+                payload = decode_token(token)
+                user_id = payload.get('sub')
+            except Exception:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token')
+
         user_uuid = uuid.UUID(user_id)
         sessions = await auth_repo.get_user_sessions(user_uuid)
         

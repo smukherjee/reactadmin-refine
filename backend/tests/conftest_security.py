@@ -16,11 +16,14 @@ def _get_free_port() -> int:
     return port
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope='session')
 def start_fastapi_server():
     """Start the FastAPI app with uvicorn in a background thread and export TEST_BASE_URL.
 
-    This fixture is autouse so tests will have a running backend without external orchestration.
+    This fixture is intentionally NOT autouse. Tests that require a running
+    backend should accept the `start_fastapi_server` fixture. This prevents
+    the server from being started for every test (avoids event-loop conflicts
+    and speeds up unit tests).
     """
     try:
         # import app

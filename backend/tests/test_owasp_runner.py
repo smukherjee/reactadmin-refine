@@ -17,8 +17,11 @@ def load_module_from_path(path, name="owasp_check"):
     return module
 
 
+pytestmark = pytest.mark.functional
+
+
 @pytest.mark.timeout(300)
-def test_run_owasp_checks_smoke():
+def test_run_owasp_checks_smoke(start_fastapi_server):
     """Smoke-run the OWASP checks as a pytest test.
 
     - Skips if requests isn't available.
@@ -35,9 +38,18 @@ def test_run_owasp_checks_smoke():
     except Exception:
         pytest.skip(f"Backend not running at {base_url}; skipping OWASP checks")
 
-    # Load OWASPCheck from tests directory
+    # Prefer OWASP helper from tools/owasp to avoid pytest collection; fall back
+    # to backend/tests/OWASPCheck.py for compatibility.
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    tools_owasp = repo_root / 'tools' / 'owasp' / 'OWASPCheck.py'
     tests_dir = pathlib.Path(__file__).parent
-    owasp_path = tests_dir / 'OWASPCheck.py'
+    fallback_owasp = tests_dir / 'OWASPCheck.py'
+
+    if tools_owasp.exists():
+        owasp_path = tools_owasp
+    else:
+        owasp_path = fallback_owasp
+
     assert owasp_path.exists(), f"OWASPCheck.py not found at {owasp_path}"
 
     module = load_module_from_path(str(owasp_path), name="tests.OWASPCheck")

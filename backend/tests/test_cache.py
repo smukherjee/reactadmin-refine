@@ -30,11 +30,11 @@ def test_cache_basic_operations():
 def test_user_permission_caching(db_session, client):
     """Test user permission caching integration."""
     # Create tenant and user
-    r = client.post("/tenants", json={"name": "Cache Test Corp", "domain": "cache.local"})
+    r = client.post("/api/v1/tenants", json={"name": "Cache Test Corp", "domain": "cache.local"})
     assert r.status_code == 200
     tenant = r.json()
     
-    ru = client.post("/users", json={
+    ru = client.post("/api/v1/users", json={
         "email": "cache@example.com",
         "password": "pass1234",
         "client_id": tenant["id"],
@@ -68,11 +68,11 @@ def test_user_permission_caching(db_session, client):
 def test_cache_invalidation(db_session, client):
     """Test cache invalidation when roles change."""
     # Create tenant and user
-    r = client.post("/tenants", json={"name": "Cache Invalidate Corp", "domain": "invalidate.local"})
+    r = client.post("/api/v1/tenants", json={"name": "Cache Invalidate Corp", "domain": "invalidate.local"})
     assert r.status_code == 200
     tenant = r.json()
     
-    ru = client.post("/users", json={
+    ru = client.post("/api/v1/users", json={
         "email": "invalidate@example.com",
         "password": "pass1234",
         "client_id": tenant["id"],
@@ -100,7 +100,7 @@ def test_cache_invalidation(db_session, client):
 
 def test_cache_status_endpoint(client):
     """Test cache status endpoint."""
-    r = client.get("/cache/status")
+    r = client.get("/api/v1/cache/status")
     assert r.status_code == 200
     data = r.json()
     assert "redis_available" in data

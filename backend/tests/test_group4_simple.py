@@ -18,7 +18,7 @@ def test_group4_tenant_endpoints():
         "is_active": True
     }
     
-    response = client.post("/tenants", json=tenant_data)
+    response = client.post("/api/v1/tenants", json=tenant_data)
     assert response.status_code == 200
     tenant = response.json()
     assert tenant["name"] == tenant_data["name"]
@@ -27,7 +27,7 @@ def test_group4_tenant_endpoints():
     print(f"✅ Created tenant: {tenant['name']} (ID: {tenant['id']})")
     
     # Test 2: Idempotent tenant creation
-    response2 = client.post("/tenants", json=tenant_data)
+    response2 = client.post("/api/v1/tenants", json=tenant_data)
     assert response2.status_code == 200
     tenant2 = response2.json()
     assert tenant["id"] == tenant2["id"]  # Same tenant returned

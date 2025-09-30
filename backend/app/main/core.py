@@ -164,20 +164,24 @@ app.add_middleware(TenantRBACMiddleware)
 # Add lightweight GZip compression for larger responses
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
-# Include v1 API router for versioning
-from backend.app.api.v1 import router as v1_router
-app.include_router(v1_router, prefix="/api/v1")
-
-# Include v2 async API router
+# Include v2 async API router (exposed under both /api/v2 and /api/v1 for
+# backward compatibility during migration). The legacy v1 package has been
+# removed; v2 contains equivalent sync/async implementations. Exposing v2
+# under /api/v1 avoids breaking clients while we remove the old code.
 from backend.app.api.v2 import router as v2_router
+from backend.app.api.v1 import router as v1_router
+
+# Include async v2 router at canonical path
 app.include_router(v2_router, prefix="/api/v2")
 
-# For backward compatibility during the migration we previously exposed v1 at
-# the root. That compatibility shim has been removed so v1 endpoints are only
-# available under the /api/v1 prefix.
-# NOTE: Re-introduce a lightweight compatibility shim while tests are migrated.
-# This should be removed once tests and clients fully use the /api/v1 and /api/v2 prefixes.
-app.include_router(v1_router)
+# For /api/v1 we want the legacy sync router to take precedence. Include
+# the v1 sync router first, then mount v2 under the same prefix so any
+# missing routes still resolve to async implementations.
+app.include_router(v1_router, prefix="/api/v1")
+app.include_router(v2_router, prefix="/api/v1")
+
+# During migration we previously exposed v1 at the root for compatibility.
+# That shim has been removed: v1 endpoints are available under /api/v1 only.
 
 # create tables if not exist (helpful for initial run)
 Base.metadata.create_all(bind=engine)
@@ -322,6 +326,11 @@ def system_metrics():
             "uptime_seconds": round(uptime_seconds, 2),
             "metrics_service_error": str(e)
         }
+
+
+# The v1 sync router (included above) exposes legacy /api/v1/* endpoints.
+# We avoid duplicating those handlers here so routing is sourced from the
+# sync implementation under `backend.app.api.v1`.
 
 
 @app.get("/readiness")

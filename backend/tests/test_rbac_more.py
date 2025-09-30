@@ -21,7 +21,7 @@ def test_permission_combination_and_expiry(db_session, client):
     t = r.json()
 
     # create user
-    ru = client.post('/users', json={'email': 'carol@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Carol', 'last_name': 'X'})
+    ru = client.post('/api/v1/users', json={'email': 'carol@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Carol', 'last_name': 'X'})
     assert ru.status_code == 200
     carol = ru.json()
 
@@ -38,19 +38,19 @@ def test_permission_combination_and_expiry(db_session, client):
     assert 'read:protected' in perms, f"expected permission in DB, got {perms}"
 
     # login and check protected resource (should be allowed)
-    la = client.post('/auth/login', params={'email': 'carol@example.com', 'password': 'pass1234', 'client_id': t['id']})
+    la = client.post('/api/v1/auth/login', params={'email': 'carol@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert la.status_code == 200
     headers = {'Authorization': f"Bearer {la.json()['access_token']}"}
-    rprot = client.get('/protected/resource', headers=headers)
+    rprot = client.get('/api/v1/protected/resource', headers=headers)
     assert rprot.status_code == 200
 
     # Now create another user without roles and show forbidden
-    rb = client.post('/users', json={'email': 'dave@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Dave', 'last_name': 'Y'})
+    rb = client.post('/api/v1/users', json={'email': 'dave@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Dave', 'last_name': 'Y'})
     assert rb.status_code == 200
-    lb = client.post('/auth/login', params={'email': 'dave@example.com', 'password': 'pass1234', 'client_id': t['id']})
+    lb = client.post('/api/v1/auth/login', params={'email': 'dave@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert lb.status_code == 200
     bheaders = {'Authorization': f"Bearer {lb.json()['access_token']}"}
-    rprot2 = client.get('/protected/resource', headers=bheaders)
+    rprot2 = client.get('/api/v1/protected/resource', headers=bheaders)
     assert rprot2.status_code == 403
 
 
@@ -63,7 +63,7 @@ def test_role_expiry(db_session, client):
     assert r.status_code == 200
     t = r.json()
 
-    ru = client.post('/users', json={'email': 'eve@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Eve', 'last_name': 'Z'})
+    ru = client.post('/api/v1/users', json={'email': 'eve@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Eve', 'last_name': 'Z'})
     assert ru.status_code == 200
     eve = ru.json()
 
@@ -84,10 +84,10 @@ def test_role_expiry(db_session, client):
     assert 'read:protected' not in perms, "Expired role should not contribute to permissions"
 
     # login and check protected resource (may be 200 or 403 depending on expiry enforcement)
-    le = client.post('/auth/login', params={'email': 'eve@example.com', 'password': 'pass1234', 'client_id': t['id']})
+    le = client.post('/api/v1/auth/login', params={'email': 'eve@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert le.status_code == 200
     headers = {'Authorization': f"Bearer {le.json()['access_token']}"}
-    rprot = client.get('/protected/resource', headers=headers)
+    rprot = client.get('/api/v1/protected/resource', headers=headers)
     assert rprot.status_code in (200, 403)
 
 
@@ -99,7 +99,7 @@ def test_multiple_roles_aggregation(db_session, client):
     assert r.status_code == 200
     t = r.json()
 
-    ru = client.post('/users', json={'email': 'frank@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Frank', 'last_name': 'W'})
+    ru = client.post('/api/v1/users', json={'email': 'frank@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Frank', 'last_name': 'W'})
     assert ru.status_code == 200
     frank = ru.json()
 
@@ -112,10 +112,10 @@ def test_multiple_roles_aggregation(db_session, client):
     perms = crud.get_user_permissions(db_session, frank['id'])
     assert 'read:protected' in perms and 'roles:create' in perms
 
-    lf = client.post('/auth/login', params={'email': 'frank@example.com', 'password': 'pass1234', 'client_id': t['id']})
+    lf = client.post('/api/v1/auth/login', params={'email': 'frank@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert lf.status_code == 200
     headers = {'Authorization': f"Bearer {lf.json()['access_token']}"}
-    rprot = client.get('/protected/resource', headers=headers)
+    rprot = client.get('/api/v1/protected/resource', headers=headers)
     assert rprot.status_code == 200
 
 
@@ -128,7 +128,7 @@ def test_permission_revocation(db_session, client):
     assert r.status_code == 200
     t = r.json()
 
-    ru = client.post('/users', json={'email': 'gina@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Gina', 'last_name': 'V'})
+    ru = client.post('/api/v1/users', json={'email': 'gina@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Gina', 'last_name': 'V'})
     assert ru.status_code == 200
     gina = ru.json()
 
@@ -145,10 +145,10 @@ def test_permission_revocation(db_session, client):
     perms2 = crud.get_user_permissions(db_session, gina['id'])
     assert 'read:protected' not in perms2
 
-    lg = client.post('/auth/login', params={'email': 'gina@example.com', 'password': 'pass1234', 'client_id': t['id']})
+    lg = client.post('/api/v1/auth/login', params={'email': 'gina@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert lg.status_code == 200
     headers = {'Authorization': f"Bearer {lg.json()['access_token']}"}
-    rprot = client.get('/protected/resource', headers=headers)
+    rprot = client.get('/api/v1/protected/resource', headers=headers)
     assert rprot.status_code == 403
 
 
@@ -157,20 +157,20 @@ def test_forbidden_action(db_session, client):
     assert r.status_code == 200
     t = r.json()
 
-    ru = client.post('/users', json={'email': 'harry@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Harry', 'last_name': 'U'})
+    ru = client.post('/api/v1/users', json={'email': 'harry@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'Harry', 'last_name': 'U'})
     assert ru.status_code == 200
     harry = ru.json()
 
     # No roles assigned
-    lh = client.post('/auth/login', params={'email': 'harry@example.com', 'password': 'pass1234', 'client_id': t['id']})
+    lh = client.post('/api/v1/auth/login', params={'email': 'harry@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert lh.status_code == 200
     headers = {'Authorization': f"Bearer {lh.json()['access_token']}"}
-    rprot = client.get('/protected/resource', headers=headers)
+    rprot = client.get('/api/v1/protected/resource', headers=headers)
     assert rprot.status_code == 403
 
 
 def test_invalid_token(client):
     # Use a random/invalid JWT
     headers = {'Authorization': 'Bearer invalid.token.value'}
-    rprot = client.get('/protected/resource', headers=headers)
+    rprot = client.get('/api/v1/protected/resource', headers=headers)
     assert rprot.status_code == 401

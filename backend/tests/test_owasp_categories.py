@@ -5,8 +5,15 @@ import pytest
 
 
 def load_owasp_module():
+    # Prefer tools/owasp/OWASPCheck.py so the helpers are not collected as tests
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    tools_owasp = repo_root / 'tools' / 'owasp' / 'OWASPCheck.py'
     tests_dir = pathlib.Path(__file__).parent
-    owasp_path = tests_dir / 'OWASPCheck.py'
+    if tools_owasp.exists():
+        owasp_path = tools_owasp
+    else:
+        owasp_path = tests_dir / 'OWASPCheck.py'
+
     spec = importlib.util.spec_from_file_location('owasp', str(owasp_path))
     if spec is None:
         raise ImportError(f"Could not load spec for {owasp_path}")
@@ -18,8 +25,11 @@ def load_owasp_module():
     return module
 
 
+pytestmark = pytest.mark.functional
+
+
 @pytest.fixture(scope='module')
-def tester():
+def tester(start_fastapi_server):
     requests = pytest.importorskip('requests')
     base_url = os.getenv('TEST_BASE_URL', 'http://localhost:8000')
     # quick reachability check

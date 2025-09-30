@@ -64,6 +64,8 @@ dependencies = [
 dev = [
     # Testing framework
     "pytest>=8.4.0",
+    "pytest-asyncio>=0.22",
+    "pytest-timeout>=2.2",
     "httpx>=0.28.0",          # Required for FastAPI TestClient
     
     # Type checking and linting

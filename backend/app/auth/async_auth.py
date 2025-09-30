@@ -16,8 +16,8 @@ from backend.app.core.logging import get_logger
 from backend.app.core.security import decode_token
 from backend.app.auth.core import _get_payload_from_request
 from sqlalchemy import select
-from starlette.concurrency import run_in_threadpool
-from backend.app.db.core import SessionLocal, get_db
+# v2 async endpoints should not use sync fallbacks; tests should call /api/v1 for
+# sync behavior or configure an async test DB. Remove threadpool fallbacks.
 
 logger = get_logger(__name__)
 
@@ -48,43 +48,9 @@ async def get_current_user_async(
         user = result.scalar_one_or_none()
         
         if not user:
-            # Fallback: some tests create users via sync endpoints which use the sync
-            # SessionLocal engine. If the async session cannot see the user (for
-            # example when using SQLite in-memory with separate async/sync engines),
-            # try a sync lookup in a threadpool so tests can authenticate.
-            try:
-                # First try the module-level SessionLocal (file/regular DB)
-                def _sessionlocal_lookup(uid):
-                    sess = SessionLocal()
-                    try:
-                        return sess.query(User).filter(User.id == uid).first()
-                    finally:
-                        sess.close()
-
-                user_sync = await run_in_threadpool(_sessionlocal_lookup, user_uuid)
-                if user_sync:
-                    return user_sync
-
-                # If tests have overridden get_db to return an in-memory session, try
-                # to retrieve that session from the app's dependency_overrides so the
-                # async auth can see objects created by sync endpoints during tests.
-                override = getattr(request.app, 'dependency_overrides', {}).get(get_db)
-                if override:
-                    try:
-                        db_gen = override()
-                        db_session = next(db_gen)
-
-                        def _override_lookup(uid, sess):
-                            return sess.query(User).filter(User.id == uid).first()
-
-                        user_override = await run_in_threadpool(_override_lookup, user_uuid, db_session)
-                        if user_override:
-                            return user_override
-                    except Exception:
-                        logger.exception("Error using get_db override for sync lookup")
-            except Exception:
-                logger.exception("Sync fallback lookup failed")
-
+            # Do not attempt sync fallbacks in v2. If the async DB cannot see
+            # the user, treat it as not found. Tests should create users via
+            # async repositories or call the /api/v1 sync endpoints.
             raise HTTPException(status_code=401, detail="User not found")
         
         return user
@@ -105,44 +71,9 @@ def require_permission_async(permission: str):
             role_repo = await get_role_repository(db)
             user_id = uuid.UUID(str(current_user.id))
             permissions = await role_repo.get_user_permissions(user_id)
-            # If no permission found via async repo (common in tests when sync
-            # endpoints created the user/roles in a sync Session), try a sync
-            # lookup using the module-level SessionLocal or the test's get_db
-            # dependency override. This is a test-friendly fallback and keeps
-            # production async flows unchanged.
+            # Do not perform sync fallback permission checks in v2. Require
+            # permissions to be resolvable via async repositories.
             if permission not in permissions:
-                try:
-                    # Try module-level SessionLocal first
-                    def _sync_get_perms(sess, uid):
-                        try:
-                            return crud_core.get_user_permissions(sess, uid)
-                        except Exception:
-                            return []
-
-                    # run in threadpool to avoid blocking async loop
-                    try:
-                        sync_perms = await run_in_threadpool(_sync_get_perms, SessionLocal(), user_id)
-                        if isinstance(sync_perms, list) and permission in sync_perms:
-                            return True
-                    except Exception:
-                        # ignore and try override lookup
-                        pass
-
-                    # Try to use the app's get_db override (tests often override get_db)
-                    override = getattr(request.app, 'dependency_overrides', {}).get(get_db)
-                    if override:
-                        try:
-                            db_gen = override()
-                            db_session = next(db_gen)
-                            sync_perms2 = await run_in_threadpool(_sync_get_perms, db_session, user_id)
-                            if isinstance(sync_perms2, list) and permission in sync_perms2:
-                                return True
-                        except Exception:
-                            logger.exception("Error using get_db override for permission fallback")
-
-                except Exception:
-                    logger.exception("Permission fallback lookup failed")
-
                 logger.warning(f"User {current_user.id} lacks permission: {permission}")
                 raise HTTPException(status_code=403, detail="Insufficient permissions")
             

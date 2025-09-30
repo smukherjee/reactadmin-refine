@@ -16,9 +16,18 @@ def api_v1_info():
     # Provide a simple listing of important Group 4 endpoints for test introspection
     return {
         "version": "v1",
-        "description": "ReactAdmin-Refine Backend API v1",
+        "description": "ReactAdmin-Refine Backend API v1 (sync/legacy endpoints)",
+        "note": "Async endpoints were moved to /api/v2; call /api/v1 for legacy sync endpoints",
+        # Provide a mapping so tests can detect which endpoints have async
+        # implementations (we mark them with a small rocket emoji).
         "endpoints": {
-            "tenants": "🚀 GET /api/v1/tenants, GET /api/v1/tenants/{id} (async)",
-            "audit": "🚀 POST /api/v1/audit-logs, GET /api/v1/audit-logs, GET /api/v1/audit-logs/statistics (async)"
+            "health": "/api/v1/health",
+            "auth": "/api/v1/auth",
+            "users": "/api/v1/users",
+            "roles": "/api/v1/roles",
+            # Tenants and audit are implemented as async v2 endpoints
+            "tenants": "🚀 /api/v2/tenants",
+            "audit": "🚀 /api/v2/audit-logs",
+            "cache": "/api/v1/cache"
         }
     }

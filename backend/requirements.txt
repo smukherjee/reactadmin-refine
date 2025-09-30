@@ -12,6 +12,8 @@ python-jose==3.5.0
 redis[async]>=5.3.0
 pytest==8.4.2
 httpx==0.28.1
+pytest-asyncio>=0.22
+pytest-timeout>=2.2
 
 # Security testing additions
 requests>=2.28.0
