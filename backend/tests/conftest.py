@@ -14,6 +14,16 @@ if REPO_ROOT not in sys.path:
 from backend.main import app
 from backend.app.db.core import Base, get_db
 
+# Clear in-memory rate limiter state between tests to avoid flakiness
+from backend.app.middleware.security import clear_in_memory_window_store
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limit_store_between_tests():
+    clear_in_memory_window_store()
+    yield
+    clear_in_memory_window_store()
+
 
 @pytest.fixture(scope="session")
 def in_memory_engine():
@@ -61,3 +71,66 @@ def client(monkeypatch, db_session, in_memory_engine):
     from fastapi.testclient import TestClient
 
     return TestClient(app)
+
+
+@pytest.fixture(scope='session', autouse=True)
+def start_fastapi_server():
+    """Start a real HTTP server for tests that use `requests`.
+
+    This fixture starts uvicorn in a background thread, picks a free port,
+    and sets TEST_BASE_URL env var for tests to use.
+    """
+    import os
+    import socket
+    import threading
+    import time
+
+    try:
+        # `app` is already imported above in this file
+        from backend.main import app as fastapi_app
+    except Exception as e:
+        pytest.skip(f"Could not import backend.main.app: {e}")
+
+    # find a free port
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('127.0.0.1', 0))
+    host, port = s.getsockname()
+    s.close()
+
+    try:
+        import uvicorn
+    except Exception:
+        pytest.skip('uvicorn not installed in test environment; cannot start HTTP server')
+
+    config = uvicorn.Config(fastapi_app, host='127.0.0.1', port=port, log_level='warning', loop='asyncio')
+    server = uvicorn.Server(config)
+
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    base_url = f'http://127.0.0.1:{port}'
+    # wait for server to become ready
+    import requests
+    ready = False
+    for _ in range(50):
+        try:
+            r = requests.get(base_url + '/', timeout=0.5)
+            ready = True
+            break
+        except Exception:
+            time.sleep(0.1)
+
+    os.environ['TEST_BASE_URL'] = base_url
+
+    if not ready:
+        pytest.skip(f"FastAPI server did not become ready at {base_url}")
+
+    yield base_url
+
+    # Teardown
+    try:
+        server.should_exit = True
+        thread.join(timeout=5)
+    except Exception:
+        pass

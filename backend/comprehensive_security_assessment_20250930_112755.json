@@ -1,0 +1,19 @@
+{
+  "assessment_timestamp": "2025-09-30T11:27:55.423095",
+  "tools_available": [
+    "bandit",
+    "cryptography"
+  ],
+  "tools_missing": [
+    "safety",
+    "jwt",
+    "beautifulsoup4"
+  ],
+  "basic_report": null,
+  "advanced_report": null,
+  "recommendations": [
+    "\u2713 Static code analysis available - Review Bandit findings",
+    "\u26a0\ufe0f  Install Safety for dependency vulnerability scanning",
+    "\u2713 Cryptographic analysis available - Review crypto implementation"
+  ]
+}

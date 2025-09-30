@@ -6,7 +6,9 @@ from typing import Generator
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
+from backend.app.core.config import settings
+
+DATABASE_URL = settings.DATABASE_URL
 
 engine = create_engine(DATABASE_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)

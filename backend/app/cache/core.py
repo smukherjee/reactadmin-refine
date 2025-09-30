@@ -18,8 +18,10 @@ from backend.app.core.logging import get_logger, log_cache_operation
 logger = get_logger('cache')
 
 # Redis configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-CACHE_TTL = int(os.getenv("CACHE_TTL", "300"))  # 5 minutes default
+from backend.app.core.config import settings
+
+REDIS_URL = settings.REDIS_URL
+CACHE_TTL = settings.CACHE_TTL
 INVALIDATION_CHANNEL = "app:cache-invalidate"
 
 # Redis client instance (use Any at runtime but cast to Redis where needed)

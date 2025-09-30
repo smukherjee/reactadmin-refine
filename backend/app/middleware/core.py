@@ -1,9 +1,9 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from jose import jwt, JWTError
-import os
+from backend.app.core.config import settings
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
+SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
 
 

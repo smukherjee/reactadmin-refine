@@ -97,6 +97,44 @@ Checklist for enterprise readiness
 - [x] Health and metrics endpoints
 - [x] Structured logs and request/response logging
 - [ ] Rate limiting and security headers via middleware (X-Frame-Options, CSP, HSTS)
+
+Rate limiting and security middleware (quick reference)
+---------------------------------------------------
+
+We implemented two middleware components to improve security and protect the service from abuse:
+
+- RateLimitMiddleware
+  - Purpose: per-client rate limiting using a sliding-window algorithm.
+  - Production behavior: uses Redis sorted sets (ZADD/ZREMRANGEBYSCORE/ZCARD + EXPIRE) for a distributed sliding-window limiter.
+  - Development/test behavior: uses a local in-memory timestamp list per client to approximate sliding-window behavior (no Redis required).
+  - Configuration keys (in `app/core/config.py` / environment):
+    - RATE_LIMIT_ENABLED (bool) — enable/disable rate limiting (default: true)
+    - RATE_LIMIT_REQUESTS (int) — allowed requests per window (default: 100)
+    - RATE_LIMIT_WINDOW_SECONDS (int) — sliding window length in seconds (default: 60)
+  - Recommended production values:
+    - RATE_LIMIT_ENABLED=true
+    - RATE_LIMIT_REQUESTS=100 (adjust to your traffic profile; 100/60s is a reasonable baseline)
+    - RATE_LIMIT_WINDOW_SECONDS=60
+    - Ensure REDIS_URL is configured and reachable from all app replicas.
+
+- SecurityHeadersMiddleware
+  - Purpose: add recommended response headers to harden clients and browsers.
+  - Headers added: X-Frame-Options: DENY, X-Content-Type-Options: nosniff, Referrer-Policy, Strict-Transport-Security (HSTS), Content-Security-Policy, X-XSS-Protection (legacy).
+  - Configuration keys:
+    - CSP_POLICY (str) — Content Security Policy string (default: "default-src 'self'")
+    - HSTS_MAX_AGE (int) — HSTS max-age in seconds (default: 31536000)
+  - Recommended production values:
+    - CSP_POLICY: a strict CSP tuned to your front-end (include allowed script-src, connect-src, img-src domains)
+    - HSTS_MAX_AGE: 31536000 (1 year) with includeSubDomains if you control subdomains; reduce for staging/dev.
+
+Notes and operational tips
+
+- Logs and metrics: log rate-limit rejections (tenant/user/route) and expose counters (Prometheus) for monitoring; add alerts for sustained rejections.
+
+- Testing: test suites can set env vars and call `reload_settings()` to refresh `app/core/config.py` so middleware reads updated values.
+
+- Safety: middleware is fail-open on internal errors (so availability is not impacted if Redis goes down); tune to your risk tolerance.
+
 - [ ] Secrets management guidance (do not store secrets in repo; use env or secret manager)
 - [x] RBAC and tenant isolation tests (we already have multitenant tests — great)
 
@@ -107,8 +145,11 @@ Minimal safe changes I can apply now
 - Optionally scaffold `app/core/config.py` with a `BaseSettings` class so you can migrate from `os.getenv` in small increments.
 
 Would you like me to:
+
 1) Create the `app/` skeleton (api/v1, core, db, auth, cache, services, crud) as empty modules and a `app/main.py` that wraps `backend.main`? (lowest risk — I can keep current imports intact during migration)
+
 2) Scaffold Alembic configuration and a basic `Dockerfile`?
+
 3) Start moving one file (for example `cache.py`) into `app/cache` and update imports + tests iteratively?
 
 Tell me which option you'd like and I'll implement it (I recommend #1 to get a clean, gradual migration path).

@@ -11,3 +11,17 @@ python-jose==3.5.0
 redis==5.0.3
 pytest==8.4.2
 httpx==0.28.1
+
+# Security testing additions
+requests>=2.28.0
+urllib3>=1.26.0
+
+# Advanced Security Testing Tools
+bandit>=1.7.0                # Static security analysis
+safety>=2.0.0                # Dependency vulnerability scanning
+cryptography>=3.4.0          # Cryptographic testing
+pyjwt>=2.4.0                 # JWT token analysis
+beautifulsoup4>=4.10.0       # HTML parsing for XSS detection
+
+# Load testing
+locust>=2.18.0

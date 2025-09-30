@@ -26,7 +26,9 @@ if TYPE_CHECKING:
     from backend.app.models.core import User
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
+from backend.app.core.config import settings
+
+SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 

@@ -22,14 +22,18 @@ load_dotenv()
 
 # Configure structured logging
 from backend.app.core.logging import setup_logging, get_logger
+from backend.app.core.config import settings
+
 setup_logging()
 logger = get_logger(__name__)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+from backend.app.core.config import settings
+
+SECRET_KEY = settings.SECRET_KEY
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 # Tenant cookie configuration
-TENANT_COOKIE_NAME = os.getenv("TENANT_COOKIE_NAME", "tenant_id")
-TENANT_COOKIE_SECURE = os.getenv("TENANT_COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
+TENANT_COOKIE_NAME = settings.TENANT_COOKIE_NAME
+TENANT_COOKIE_SECURE = settings.TENANT_COOKIE_SECURE
 
 
 from contextlib import asynccontextmanager
@@ -79,12 +83,19 @@ app = FastAPI(title="ReactAdmin-Refine Backend", lifespan=lifespan)
 # Attach middleware for tenant extraction and RBAC payload
 from backend.app.middleware.core import TenantRBACMiddleware
 from backend.app.middleware.logging import RequestLoggingMiddleware, PerformanceLoggingMiddleware
+from backend.app.middleware.security import RateLimitMiddleware, SecurityHeadersMiddleware
 
 # Add logging middleware (order matters - add these first)
 app.add_middleware(PerformanceLoggingMiddleware, slow_request_threshold=1000.0)
-app.add_middleware(RequestLoggingMiddleware, 
-                  log_request_body=os.getenv("LOG_REQUEST_BODY", "false").lower() == "true",
-                  log_response_body=os.getenv("LOG_RESPONSE_BODY", "false").lower() == "true")
+app.add_middleware(RequestLoggingMiddleware,
+                  log_request_body=settings.LOG_REQUEST_BODY,
+                  log_response_body=settings.LOG_RESPONSE_BODY)
+# Security and rate limiting: add after logging middleware so events are captured
+# Always register the RateLimitMiddleware so tests can toggle it at runtime via
+# centralized settings and reload_settings(); the middleware itself consults
+# settings.RATE_LIMIT_ENABLED at dispatch time and will be a no-op when disabled.
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(TenantRBACMiddleware)
 
 # Include v1 API router for versioning
@@ -322,8 +333,8 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": os.getenv("APP_VERSION", "0.1.0"),
-        "environment": os.getenv("ENVIRONMENT", "development")
+    "version": settings.APP_VERSION,
+    "environment": settings.ENVIRONMENT
     }
 
 
@@ -406,8 +417,8 @@ def detailed_health_check(db: Session = Depends(get_db)):
     return {
         "status": overall_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": os.getenv("APP_VERSION", "0.1.0"),
-        "environment": os.getenv("ENVIRONMENT", "development"),
+    "version": settings.APP_VERSION,
+    "environment": settings.ENVIRONMENT,
         "components": components
     }
 
