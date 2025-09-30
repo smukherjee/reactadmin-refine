@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.core.logging import get_logger
 from backend.app.core.security import get_password_hash
 from backend.app.db.core import get_async_db
-from backend.app.repositories import AsyncUserRepository, get_user_repository
+from backend.app.repositories import get_user_repository
 from backend.app.schemas.core import UserCreate, UserOut, UserUpdate
 
 logger = get_logger(__name__)

@@ -83,10 +83,6 @@ async def async_redis_available() -> bool:
         return False
 
 
-import asyncio
-from typing import Callable, Dict
-
-
 async def async_safe_redis_call(
     fn: Callable[[Any], Any], timeout: float = 0.25
 ) -> Dict[str, Any]:

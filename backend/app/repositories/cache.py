@@ -4,9 +4,8 @@ This module provides async cache operations including cache status,
 clearing, statistics, and health monitoring.
 """
 
-import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +36,7 @@ class AsyncCacheRepository:
     async def get_cache_status(self) -> Dict[str, Any]:
         """Get comprehensive cache status and statistics."""
         try:
-            redis = await self._get_redis_client()
+            await self._get_redis_client()
 
             # Use async helper with timeouts for potentially slow operations
             from backend.app.cache.async_redis import async_safe_redis_call

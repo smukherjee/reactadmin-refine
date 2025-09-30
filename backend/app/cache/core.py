@@ -15,11 +15,11 @@ import redis
 import redis.asyncio as redis_async
 
 from backend.app.core.logging import get_logger, log_cache_operation
+from backend.app.core.config import settings
 
 logger = get_logger("cache")
 
 # Redis configuration
-from backend.app.core.config import settings
 
 REDIS_URL = settings.REDIS_URL
 CACHE_TTL = settings.CACHE_TTL

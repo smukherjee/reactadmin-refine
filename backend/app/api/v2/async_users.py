@@ -13,7 +13,7 @@ from backend.app.auth.core import get_current_user
 from backend.app.crud.core import pwd_context
 from backend.app.db.core import get_async_db
 from backend.app.models.core import User
-from backend.app.repositories import AsyncUserRepository, get_user_repository
+from backend.app.repositories import get_user_repository
 from backend.app.schemas.core import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/async/users", tags=["async-users"])
