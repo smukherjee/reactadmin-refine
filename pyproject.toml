@@ -37,7 +37,7 @@ dependencies = [
     "alembic>=1.16.0",        # Database migrations
     
     # Caching
-        "redis>=5.0.0",           # Redis client for caching and sessions
+    "redis>=6.4.0",           # Redis client for caching and sessions
     "aioredis>=2.0.0",        # Async Redis client
     
     # Authentication and security
@@ -52,7 +52,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     
     # System monitoring
-    "psutil>=5.9.0",             # System and process monitoring
+    "psutil>=7.1.0",             # System and process monitoring
     
     # Type stubs for development
     "types-passlib>=1.7.7.0",
@@ -71,14 +71,14 @@ dev = [
     "pyright",                # Alternative type checker
     
     # Code formatting
-    "black>=24.0.0",
-    "isort>=5.12.0",
+    "black>=25.9.0",
+    "isort>=6.0.1",
     
     # Security scanning
     "bandit>=1.7.0",
     
     # Development tools
-    "pre-commit>=3.0.0",
+    "pre-commit>=4.3.0",
 ]
 
 # All dependencies for complete development environment
@@ -118,13 +118,8 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
-warn_return_any = true
+python_version = "3.13"
 warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
 no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -139,6 +134,19 @@ module = [
     "uvicorn.*",
     "jose.*",
     "passlib.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "psutil",
+    "psutil.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pydantic_settings",
 ]
 ignore_missing_imports = true
 

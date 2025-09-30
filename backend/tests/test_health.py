@@ -9,7 +9,7 @@ client = TestClient(app)
 
 def test_health_endpoint():
     """Test basic health check endpoint."""
-    response = client.get("/health")
+    response = client.get("/api/v1/health")
     assert response.status_code == 200
     
     data = response.json()
@@ -21,7 +21,7 @@ def test_health_endpoint():
 
 def test_detailed_health_endpoint():
     """Test detailed health check endpoint."""
-    response = client.get("/health/detailed")
+    response = client.get("/api/v1/health/detailed")
     assert response.status_code == 200
     
     data = response.json()
@@ -57,7 +57,7 @@ def test_detailed_health_endpoint():
 
 def test_metrics_endpoint():
     """Test system metrics endpoint."""
-    response = client.get("/metrics")
+    response = client.get("/api/v1/metrics")
     assert response.status_code == 200
     
     data = response.json()
@@ -84,7 +84,7 @@ def test_metrics_endpoint():
 
 def test_readiness_endpoint():
     """Test Kubernetes readiness probe endpoint."""
-    response = client.get("/readiness")
+    response = client.get("/api/v1/readiness")
     assert response.status_code == 200
     
     data = response.json()
@@ -98,7 +98,7 @@ def test_readiness_endpoint():
 
 def test_liveness_endpoint():
     """Test Kubernetes liveness probe endpoint."""
-    response = client.get("/liveness")
+    response = client.get("/api/v1/liveness")
     assert response.status_code == 200
     
     data = response.json()
@@ -108,7 +108,7 @@ def test_liveness_endpoint():
 
 def test_cache_status_endpoint():
     """Test cache status endpoint."""
-    response = client.get("/cache/status")
+    response = client.get("/api/v1/cache/status")
     assert response.status_code == 200
     
     data = response.json()

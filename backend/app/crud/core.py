@@ -378,8 +378,29 @@ def create_audit_log(db: Session, client_id, action, user_id=None, resource_type
             client_id = uuid.UUID(client_id)
         except Exception:
             pass
+    # normalize user_id/resource_id to UUID if strings
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except Exception:
+            pass
+    if isinstance(resource_id, str):
+        try:
+            resource_id = uuid.UUID(resource_id)
+        except Exception:
+            pass
     al = models.AuditLog(client_id=client_id, user_id=user_id, action=action, resource_type=resource_type, resource_id=resource_id, changes=changes or {}, ip_address=ip_address, user_agent=user_agent)
     db.add(al)
     db.commit()
     db.refresh(al)
     return al
+
+
+def get_tenant_by_id(db: Session, tenant_id):
+    """Return tenant by id (sync helper)"""
+    if isinstance(tenant_id, str):
+        try:
+            tenant_id = uuid.UUID(tenant_id)
+        except Exception:
+            pass
+    return db.query(models.Tenant).filter(models.Tenant.id == tenant_id).first()

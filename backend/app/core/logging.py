@@ -83,7 +83,7 @@ class RequestLogger:
         """Log incoming request details."""
         logger = logging.getLogger("api.request")
         
-        log_data = {
+        log_data: Dict[str, Any] = {
             'event_type': 'request_started',
             'http_method': method,
             'path': path,
@@ -116,7 +116,7 @@ class RequestLogger:
         """Log response details with timing."""
         logger = logging.getLogger("api.response")
         
-        log_data = {
+        log_data: Dict[str, Any] = {
             'event_type': 'request_completed',
             'status_code': status_code,
             'response_time_ms': round(response_time_ms, 2),
@@ -314,7 +314,7 @@ def log_auth_event(event_type: str, user_email: str = '', success: bool = True, 
     """Log authentication events for security monitoring."""
     logger = get_logger('auth.security')
     
-    log_data = {
+    log_data: Dict[str, Any] = {
         'event_type': f'auth_{event_type}',
         'user_email': user_email,
         'success': success,
@@ -334,7 +334,7 @@ def log_permission_check(resource: str, action: str, user_id: str, tenant_id: st
     """Log permission checks for audit trails."""
     logger = get_logger('auth.permissions')
     
-    log_data = {
+    log_data: Dict[str, Any] = {
         'event_type': 'permission_check',
         'resource': resource,
         'action': action,
@@ -353,7 +353,7 @@ def log_database_operation(operation: str, table: str, duration_ms: float, recor
     """Log database operations with performance metrics."""
     logger = get_logger('database.operations')
     
-    log_data = {
+    log_data: Dict[str, Any] = {
         'event_type': 'database_operation',
         'operation': operation,
         'table': table,
@@ -371,7 +371,7 @@ def log_cache_operation(operation: str, key: str, hit: Optional[bool] = None, du
     """Log cache operations for monitoring."""
     logger = get_logger('cache.operations')
     
-    log_data = {
+    log_data: Dict[str, Any] = {
         'event_type': 'cache_operation',
         'operation': operation,
         'cache_key': key[:100] if key else None  # Truncate long keys

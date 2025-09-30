@@ -94,7 +94,7 @@ async def async_login(
             user_agent=user_agent
         )
         
-        if not user or not session:
+        if not user or not session or not access_token or not refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials"
@@ -147,7 +147,7 @@ async def async_refresh_token(
             client_id=client_id
         )
         
-        if not user or not session:
+        if not user or not session or not access_token or not refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token"

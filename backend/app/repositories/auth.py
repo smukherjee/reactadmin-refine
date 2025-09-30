@@ -53,8 +53,15 @@ class AsyncAuthRepository:
             )
             result = await self.session.execute(stmt)
             user = result.scalar_one_or_none()
-            
-            if not user or not verify_password(password, user.password_hash):
+
+            if not user:
+                duration_ms = (time.time() - start_time) * 1000
+                log_database_operation("SELECT", "users", duration_ms)
+                logger.warning(f"Failed authentication attempt for email: {email}")
+                return None, None, None, None
+
+            stored_hash = getattr(user, "password_hash", None)
+            if not isinstance(stored_hash, str) or not verify_password(password, stored_hash):
                 duration_ms = (time.time() - start_time) * 1000
                 log_database_operation("SELECT", "users", duration_ms)
                 logger.warning(f"Failed authentication attempt for email: {email}")

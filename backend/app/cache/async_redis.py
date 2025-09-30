@@ -1,27 +1,27 @@
 """Async Redis client setup and management."""
+from typing import Any, Optional, cast
+
 try:
     import redis.asyncio as redis_async
     REDIS_ASYNC_AVAILABLE = True
 except ImportError:
-    redis_async = None
+    redis_async = cast(Any, None)
     REDIS_ASYNC_AVAILABLE = False
-
-from typing import Optional
 from backend.app.core.config import settings
 from backend.app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 # Global async Redis client
-_async_redis_client = None
+_async_redis_client: Optional[Any] = None
 
 
-async def get_async_redis_client():
+async def get_async_redis_client() -> Optional[Any]:
     """Get the async Redis client instance."""
     return _async_redis_client
 
 
-async def init_async_redis():
+async def init_async_redis() -> None:
     """Initialize async Redis connection."""
     global _async_redis_client
     
@@ -49,7 +49,7 @@ async def init_async_redis():
         _async_redis_client = None
 
 
-async def close_async_redis():
+async def close_async_redis() -> None:
     """Close async Redis connection."""
     global _async_redis_client
     

@@ -1,10 +1,11 @@
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 from typing import Optional, Dict, Any
 import os
 import time
 import threading
+from starlette.types import ASGIApp
 
 from backend.app.cache import core as cache
 from backend.app.cache.async_redis import get_async_redis_client
@@ -72,13 +73,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
       RATE_LIMIT_WINDOW_SECONDS (int, default 60)
     """
 
-    def __init__(self, app, **kwargs):
+    def __init__(self, app: ASGIApp, **kwargs: Any) -> None:
         super().__init__(app)
         # keep fallbacks; actual values are read at dispatch time to allow test monkeypatching
         self._default_max = int(kwargs.get("max_requests", 100))
         self._default_window = int(kwargs.get("window", 60))
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # read config at dispatch-time to respect runtime env changes (useful for tests)
         # Primary: check environment variable directly (this ensures monkeypatch.setenv works)
         env_val = os.getenv('RATE_LIMIT_ENABLED')
@@ -134,7 +135,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
     
-    async def _async_redis_rate_limit(self, redis_client, key: str, max_requests: int, window: int) -> tuple[int, int]:
+    async def _async_redis_rate_limit(self, redis_client: Any, key: str, max_requests: int, window: int) -> tuple[int, int]:
         """Async Redis sliding window rate limiting."""
         now = time.time()
         cutoff = now - window

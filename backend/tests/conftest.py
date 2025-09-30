@@ -73,7 +73,7 @@ def client(monkeypatch, db_session, in_memory_engine):
     return TestClient(app)
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope='session')
 def start_fastapi_server():
     """Start a real HTTP server for tests that use `requests`.
 

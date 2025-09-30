@@ -54,23 +54,23 @@ def test_rate_limit_smoke():
 
 def test_auth_misconfiguration_and_broken_access_controls(db_session, client):
     # Create two tenants and users and ensure cross-tenant access is denied
-    t1 = client.post('/tenants', json={'name': 'TenantA', 'domain': 'a.local'}).json()
-    t2 = client.post('/tenants', json={'name': 'TenantB', 'domain': 'b.local'}).json()
+    t1 = client.post('/api/v1/tenants', json={'name': 'TenantA', 'domain': 'a.local'}).json()
+    t2 = client.post('/api/v1/tenants', json={'name': 'TenantB', 'domain': 'b.local'}).json()
 
-    u1 = client.post('/users', json={'email': 'usera@example.com', 'password': 'pass1234', 'client_id': t1['id'], 'first_name': 'A', 'last_name': 'One'})
+    u1 = client.post('/api/v1/users', json={'email': 'usera@example.com', 'password': 'pass1234', 'client_id': t1['id'], 'first_name': 'A', 'last_name': 'One'})
     assert u1.status_code == 200
-    u2 = client.post('/users', json={'email': 'userb@example.com', 'password': 'pass1234', 'client_id': t2['id'], 'first_name': 'B', 'last_name': 'Two'})
+    u2 = client.post('/api/v1/users', json={'email': 'userb@example.com', 'password': 'pass1234', 'client_id': t2['id'], 'first_name': 'B', 'last_name': 'Two'})
     assert u2.status_code == 200
 
     # Login as user A and try to access tenant B's resources
-    la = client.post('/auth/login', params={'email': 'usera@example.com', 'password': 'pass1234', 'client_id': t1['id']})
+    la = client.post('/api/v1/auth/login', params={'email': 'usera@example.com', 'password': 'pass1234', 'client_id': t1['id']})
     assert la.status_code == 200
     token = la.json().get('access_token')
     assert token
     headers = {'Authorization': f'Bearer {token}'}
 
     # Attempt to list users for tenant B using user A's token (should be 403 or empty)
-    r = client.get(f"/tenants/{t2['id']}/users", headers=headers)
+    r = client.get(f"/api/v1/tenants/{t2['id']}/users", headers=headers)
     assert r.status_code in (200, 403, 404)
     if r.status_code == 200:
         # Ensure the returned list does not contain tenant B's internal-only data visible to other tenants
@@ -89,7 +89,7 @@ def test_insecure_deserialization_and_malformed_payloads(client):
 
 def test_jwt_and_token_hardening(client):
     # Create tenant and user and obtain JWT
-    t = client.post('/tenants', json={'name': 'JWTTest', 'domain': 'jwt.local'}).json()
+    t = client.post('/api/v1/tenants', json={'name': 'JWTTest', 'domain': 'jwt.local'}).json()
     client.post('/users', json={'email': 'jwt@example.com', 'password': 'pass1234', 'client_id': t['id'], 'first_name': 'J', 'last_name': 'W'})
     l = client.post('/auth/login', params={'email': 'jwt@example.com', 'password': 'pass1234', 'client_id': t['id']})
     assert l.status_code == 200
