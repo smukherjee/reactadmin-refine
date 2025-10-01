@@ -47,12 +47,12 @@ def test_group4_tenant_endpoints():
     print("✅ GET /api/v2/tenants/{id} properly requires authentication")
 
     # Test 4: Test async audit endpoints exist (v1 prefix)
-    params = {"action": "test_action", "client_id": tenant["id"]}
+    params = {"action": "test_action", "tenant_id": tenant["id"]}
     response = client.post("/api/v2/audit-logs", params=params)
     assert response.status_code == 401
     print("✅ POST /api/v2/audit-logs properly requires authentication")
 
-    params = {"client_id": tenant["id"]}
+    params = {"tenant_id": tenant["id"]}
     response = client.get("/api/v2/audit-logs", params=params)
     assert response.status_code == 401
     print("✅ GET /api/v2/audit-logs properly requires authentication")
@@ -67,7 +67,7 @@ def test_group4_tenant_endpoints():
         response.status_code == 401
     )  # Should be 401 (auth required) before validation
 
-    params = {"action": "test", "client_id": "invalid-uuid"}
+    params = {"action": "test", "tenant_id": "invalid-uuid"}
     response = client.post("/api/v2/audit-logs", params=params)
     assert (
         response.status_code == 401

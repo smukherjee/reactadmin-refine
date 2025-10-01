@@ -1,0 +1,108 @@
+# Root .gitignore for reactadmin-refine project
+# This file covers general patterns; see frontend/.gitignore and backend/.gitignore for tech-specific patterns
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Database files (in case they end up at root)
+*.db
+*.sqlite
+*.sqlite3
+
+# Build artifacts
+build/
+dist/
+
+# Testing
+coverage/
+.nyc_output/
+.pytest_cache/
+.tox/
+
+# Documentation
+docs/_build/
+*.md.bak
+
+# Security and secrets
+secrets/
+*.key
+*.pem
+*.crt
+
+# Backup files
+*.backup
+*.orig
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+
+# Cache directories
+.cache/
+__pycache__/
+
+# Node modules (if at root)
+node_modules/
+
+# Python virtual environments (if at root)
+venv/
+.venv/
+env/
+ENV/
+
+# CI/CD
+.github/workflows/*.log
+
+# Performance and monitoring
+perf/
+*.prof
+
+# Security test artifacts
+security_test.log
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Miscellaneous
+*.tgz
+*.deb
+*.rpm

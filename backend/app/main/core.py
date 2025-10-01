@@ -67,14 +67,14 @@ async def lifespan(app: FastAPI):
             t = payload.get("type")
             if t == "user_permissions_invalidate":
                 uid = payload.get("user_id")
-                cid = payload.get("client_id")
-                if uid and cid:
-                    cache.invalidate_user_cache(cid, uid)
+                tid = payload.get("tenant_id")
+                if uid and tid:
+                    cache.invalidate_user_cache(tid, uid)
             elif t == "role_invalidate":
                 rid = payload.get("role_id")
-                cid = payload.get("client_id")
-                if rid and cid:
-                    cache.invalidate_role_cache(cid, rid)
+                tid = payload.get("tenant_id")
+                if rid and tid:
+                    cache.invalidate_role_cache(tid, rid)
         except Exception:
             logger.exception("Error handling invalidation payload")
 
@@ -179,6 +179,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ReactAdmin-Refine Backend",
+    description="Backend API for React Admin with Refine framework integration. Provides RBAC, user management, tenant isolation, and caching.",
+    version=settings.APP_VERSION,
+    contact={
+        "name": "Support",
+        "email": "support@example.com",
+    },
+    license_info={
+        "name": "MIT",
+    },
+    openapi_url="/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
     lifespan=lifespan,
     default_response_class=ORJSONResponse,
 )
@@ -209,6 +221,7 @@ app.add_middleware(
 # centralized settings and reload_settings(); the middleware itself consults
 # settings.RATE_LIMIT_ENABLED at dispatch time and will be a no-op when disabled.
 app.add_middleware(cast(Type[BaseHTTPMiddleware], RateLimitMiddleware))
+# Always add SecurityHeadersMiddleware for security
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(TenantRBACMiddleware)
 
@@ -249,8 +262,12 @@ except Exception:
     pass
 
 
-# Note: legacy root routes have been moved into `/api/v1` (sync) and `/api/v2` (async)
-# The original route implementations were migrated into router modules under backend.app.api.v1 and backend.app.api.v2
+@app.get("/")
+def root():
+    """
+    Root endpoint for basic connectivity checks.
+    """
+    return {"message": "ReactAdmin-Refine Backend API", "version": settings.APP_VERSION, "status": "running"}
 
 
 @app.get("/health/detailed")

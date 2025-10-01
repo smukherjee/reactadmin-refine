@@ -31,7 +31,7 @@ async def async_register_user(
         user_repo = await get_user_repository(db)
 
         # Check if user already exists (idempotent)
-        existing_user = await user_repo.get_by_email(user.email, user.client_id)
+        existing_user = await user_repo.get_by_email(user.email, user.tenant_id)
         if existing_user:
             logger.info(f"User {user.email} already exists, returning existing user")
             return existing_user
@@ -55,7 +55,7 @@ async def async_register_user(
 
 @router.get("", response_model=List[UserOut])
 async def async_list_users(
-    client_id: str = Query(..., description="Tenant/Client ID to filter users"),
+    tenant_id: str = Query(..., description="Tenant ID to filter users"),
     skip: int = Query(0, ge=0, description="Number of users to skip"),
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of users to return"
@@ -66,19 +66,19 @@ async def async_list_users(
     try:
         user_repo = await get_user_repository(db)
 
-        # Convert client_id to UUID
+        # Convert tenant_id to UUID
         try:
-            client_uuid = uuid.UUID(client_id)
+            tenant_uuid = uuid.UUID(tenant_id)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid client_id format",
+                detail="Invalid tenant_id format",
             )
 
         # Get users by tenant
-        users = await user_repo.list_by_tenant(client_uuid, skip=skip, limit=limit)
+        users = await user_repo.list_by_tenant(tenant_uuid, skip=skip, limit=limit)
 
-        logger.info(f"Retrieved {len(users)} users for tenant {client_id}")
+        logger.info(f"Retrieved {len(users)} users for tenant {tenant_id}")
         return users
 
     except HTTPException:

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 300
 
     # Database
-    DATABASE_URL: str = "sqlite:///./db/dev.db"
+    DATABASE_URL: str = "sqlite:///./backend/db/dev.db"
 
     # Auth
     SECRET_KEY: str = "dev-secret"
@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     RUN_SECURITY_TESTS: bool = False
 
     # Security headers
-    CSP_POLICY: str = "default-src 'self'"
+    SECURITY_HEADERS_ENABLED: bool = True
+    CSP_POLICY: str = "default-src 'self' https://cdn.jsdelivr.net https://fastapi.tiangolo.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' https://fastapi.tiangolo.com"
     HSTS_MAX_AGE: int = 31536000
 
     class Config:
@@ -112,6 +113,9 @@ def reload_settings() -> Settings:
     settings.LOG_LEVEL = _get_str("LOG_LEVEL", settings.LOG_LEVEL) or settings.LOG_LEVEL
 
     # security
+    settings.SECURITY_HEADERS_ENABLED = _get_bool(
+        "SECURITY_HEADERS_ENABLED", settings.SECURITY_HEADERS_ENABLED
+    )
     settings.CSP_POLICY = (
         _get_str("CSP_POLICY", settings.CSP_POLICY) or settings.CSP_POLICY
     )

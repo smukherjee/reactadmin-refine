@@ -30,7 +30,9 @@ class AsyncUserRepository:
         start_time = time.time()
         try:
             stmt = (
-                select(User).where(User.id == user_id).options(selectinload(User.roles))
+                select(User)
+                .where(User.id == user_id)
+                .options(selectinload(User.roles), selectinload(User.tenant))
             )
             result = await self.session.execute(stmt)
             user = result.scalar_one_or_none()
@@ -43,13 +45,13 @@ class AsyncUserRepository:
             logger.error(f"Error getting user by ID {user_id}: {e}")
             raise
 
-    async def get_by_email(self, email: str, client_id: uuid.UUID) -> Optional[User]:
+    async def get_by_email(self, email: str, tenant_id: uuid.UUID) -> Optional[User]:
         """Get user by email within tenant."""
         start_time = time.time()
         try:
             stmt = (
                 select(User)
-                .where(User.email == email, User.client_id == client_id)
+                .where(User.email == email, User.tenant_id == tenant_id)
                 .options(selectinload(User.roles))
             )
             result = await self.session.execute(stmt)
@@ -70,7 +72,7 @@ class AsyncUserRepository:
             user = User(
                 email=user_data.email,
                 password_hash=hashed_password,
-                client_id=user_data.client_id,
+                tenant_id=user_data.tenant_id,
                 first_name=user_data.first_name,
                 last_name=user_data.last_name,
                 is_active=True,
@@ -135,14 +137,14 @@ class AsyncUserRepository:
             raise
 
     async def list_by_tenant(
-        self, client_id: uuid.UUID, skip: int = 0, limit: int = 100
+        self, tenant_id: uuid.UUID, skip: int = 0, limit: int = 100
     ) -> List[User]:
         """List users by tenant with pagination."""
         start_time = time.time()
         try:
             stmt = (
                 select(User)
-                .where(User.client_id == client_id)
+                .where(User.tenant_id == tenant_id)
                 .options(selectinload(User.roles))
                 .offset(skip)
                 .limit(limit)
@@ -156,7 +158,7 @@ class AsyncUserRepository:
 
             return list(users)
         except Exception as e:
-            logger.error(f"Error listing users for tenant {client_id}: {e}")
+            logger.error(f"Error listing users for tenant {tenant_id}: {e}")
             raise
 
     async def get_user_permissions(self, user_id: uuid.UUID) -> List[str]:
@@ -204,7 +206,7 @@ class AsyncUserRepository:
 
             # Check if role exists and belongs to same tenant
             role_stmt = select(Role).where(
-                Role.id == role_id, Role.client_id == user.client_id
+                Role.id == role_id, Role.tenant_id == user.tenant_id
             )
             role_result = await self.session.execute(role_stmt)
             role = role_result.scalar_one_or_none()

@@ -38,7 +38,7 @@ def test_refresh_cookie_rotation_and_session_listing(db_session, client):
         json={
             "email": "cookie@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "C",
             "last_name": "K",
         },
@@ -51,7 +51,7 @@ def test_refresh_cookie_rotation_and_session_listing(db_session, client):
         params={
             "email": "cookie@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert login_resp.status_code == 200
@@ -100,7 +100,7 @@ def test_logout_all_revokes_all(db_session, client):
         json={
             "email": "multi@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "M",
             "last_name": "U",
         },
@@ -113,7 +113,7 @@ def test_logout_all_revokes_all(db_session, client):
         params={
             "email": "multi@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert l1.status_code == 200
@@ -129,7 +129,7 @@ def test_logout_all_revokes_all(db_session, client):
         params={
             "email": "multi@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert l2.status_code == 200

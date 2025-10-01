@@ -16,9 +16,10 @@ import {
   InputAdornment,
   Tooltip,
   Alert,
+  IconButton,
 } from '@mui/material';
-import { DataGrid, GridActionsCellItem } from '@mui/x-data-grid';
-import type { GridColDef } from '@mui/x-data-grid';
+import { DataGrid } from '@mui/x-data-grid';
+import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -34,9 +35,10 @@ export const UserListPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [pageSize, setPageSize] = useState<number>(25);
 
   // Fetch users with search and pagination
-  const { query: { data, isLoading, isError } } = useList<User>({
+  const { data, isLoading, isError } = useList<User>({
     resource: 'users',
     filters: searchTerm
       ? [
@@ -49,8 +51,8 @@ export const UserListPage: React.FC = () => {
       : [],
     pagination: {
       current: 1,
-      pageSize: 25,
-    } as any,
+      pageSize,
+    },
     sorters: [
       {
         field: 'created_at',
@@ -60,6 +62,8 @@ export const UserListPage: React.FC = () => {
   });
 
   const { mutate: deleteUser } = useDelete();
+
+  const users: User[] = data?.data ?? [];
 
   const handleDelete = (user: User) => {
     setUserToDelete(user);
@@ -77,16 +81,16 @@ export const UserListPage: React.FC = () => {
     }
   };
 
-  const columns: GridColDef[] = [
+  const columns: GridColDef<User>[] = [
     {
       field: 'avatar',
       headerName: '',
       width: 60,
       sortable: false,
       filterable: false,
-      renderCell: (params) => (
+      renderCell: ({ row }: GridRenderCellParams<any, User>) => (
         <Avatar sx={{ width: 32, height: 32 }}>
-          {params.row.first_name?.[0] || params.row.username?.[0] || 'U'}
+          {row.first_name?.[0] || row.username?.[0] || 'U'}
         </Avatar>
       ),
     },
@@ -107,9 +111,10 @@ export const UserListPage: React.FC = () => {
       headerName: 'Full Name',
       flex: 1,
       minWidth: 180,
-      valueGetter: (params: any) =>
-        `${params.row.first_name || ''} ${params.row.last_name || ''}`.trim() ||
-        params.row.username,
+      renderCell: ({ row }: GridRenderCellParams<any, User>) => {
+        const fullName = `${row.first_name || ''} ${row.last_name || ''}`.trim();
+        return fullName || row.username;
+      },
     },
     {
       field: 'roles',
@@ -117,9 +122,9 @@ export const UserListPage: React.FC = () => {
       flex: 1,
       minWidth: 200,
       sortable: false,
-      renderCell: (params) => (
+      renderCell: ({ row }: GridRenderCellParams<any, User>) => (
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-          {params.row.roles?.slice(0, 2).map((role: any) => (
+          {row.roles?.slice(0, 2).map((role) => (
             <Chip
               key={role.id}
               label={role.name}
@@ -128,9 +133,9 @@ export const UserListPage: React.FC = () => {
               color="primary"
             />
           ))}
-          {params.row.roles?.length > 2 && (
+          {row.roles?.length > 2 && (
             <Chip
-              label={`+${params.row.roles.length - 2}`}
+              label={`+${row.roles.length - 2}`}
               size="small"
               variant="outlined"
               color="default"
@@ -143,10 +148,10 @@ export const UserListPage: React.FC = () => {
       field: 'is_active',
       headerName: 'Status',
       width: 100,
-      renderCell: (params) => (
+      renderCell: ({ row }: GridRenderCellParams<any, User>) => (
         <Chip
-          label={params.row.is_active ? 'Active' : 'Inactive'}
-          color={params.row.is_active ? 'success' : 'default'}
+          label={row.is_active ? 'Active' : 'Inactive'}
+          color={row.is_active ? 'success' : 'default'}
           variant="outlined"
           size="small"
         />
@@ -156,51 +161,49 @@ export const UserListPage: React.FC = () => {
       field: 'last_login',
       headerName: 'Last Login',
       width: 140,
-      valueFormatter: (params: any) =>
-        params.value
-          ? new Date(params.value).toLocaleDateString()
-          : 'Never',
+      renderCell: ({ row }: GridRenderCellParams<any, User>) => (
+        row.last_login ? new Date(row.last_login).toLocaleDateString() : 'Never'
+      ),
     },
     {
       field: 'actions',
-      type: 'actions',
       headerName: 'Actions',
-      width: 120,
-      getActions: (params) => [
-        <GridActionsCellItem
-          key="view"
-          icon={
-            <Tooltip title="View Details">
-              <ViewIcon />
+      width: 150,
+      sortable: false,
+      filterable: false,
+      renderCell: ({ row }: GridRenderCellParams<any, User>) => (
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Tooltip title="View Details">
+            <IconButton
+              size="small"
+              onClick={() => show('users', row.id)}
+            >
+              <ViewIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <RBACGuard permissions={['update:users']}>
+            <Tooltip title="Edit User">
+              <IconButton
+                size="small"
+                onClick={() => edit('users', row.id)}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
             </Tooltip>
-          }
-          label="View"
-          onClick={() => show('users', params.id)}
-        />,
-        <RBACGuard key="edit" permissions={['update:users']}>
-          <GridActionsCellItem
-            icon={
-              <Tooltip title="Edit User">
-                <EditIcon />
-              </Tooltip>
-            }
-            label="Edit"
-            onClick={() => edit('users', params.id)}
-          />
-        </RBACGuard>,
-        <RBACGuard key="delete" permissions={['delete:users']}>
-          <GridActionsCellItem
-            icon={
-              <Tooltip title="Delete User">
-                <DeleteIcon />
-              </Tooltip>
-            }
-            label="Delete"
-            onClick={() => handleDelete(params.row)}
-            showInMenu
-          />
-        </RBACGuard>,
-      ],
+          </RBACGuard>
+          <RBACGuard permissions={['delete:users']}>
+            <Tooltip title="Delete User">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleDelete(row)}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </RBACGuard>
+        </Box>
+      ),
     },
   ];
 
@@ -208,7 +211,7 @@ export const UserListPage: React.FC = () => {
     return (
       <Box p={3}>
         <Alert severity="error">
-          Failed to load users. Please check your connection and try again.
+          Failed to load users. This may be due to missing tenant selection or insufficient permissions.
         </Alert>
       </Box>
     );
@@ -275,17 +278,16 @@ export const UserListPage: React.FC = () => {
         {/* Users Table */}
         <Card>
           <DataGrid
-            rows={data?.data || []}
+            rows={users}
             columns={columns}
             loading={isLoading}
-            pageSizeOptions={[10, 25, 50, 100]}
-            initialState={{
-              pagination: {
-                paginationModel: { pageSize: 25 },
-              },
-            }}
+            pageSize={pageSize}
+            onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            pagination
+            getRowId={(row) => row.id}
             checkboxSelection
-            disableRowSelectionOnClick
+            disableSelectionOnClick
             autoHeight
             sx={{
               border: 'none',

@@ -25,7 +25,7 @@ def create_tenant(tenant: schemas.TenantCreate, db: Session = Depends(get_db)):
 
 @router.post("/users", response_model=schemas.UserOut)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing = crud.get_user_by_email(db, user.email, client_id=user.client_id)
+    existing = crud.get_user_by_email(db, user.email, tenant_id=user.tenant_id)
     if existing:
         return existing
     u = crud.create_user(db, user)
@@ -33,8 +33,8 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login")
-def login(email: str, password: str, client_id: str, db: Session = Depends(get_db)):
-    user = crud.get_user_by_email(db, email, client_id=client_id)
+def login(email: str, password: str, tenant_id: str, db: Session = Depends(get_db)):
+    user = crud.get_user_by_email(db, email, tenant_id=tenant_id)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     from backend.app.crud.core import pwd_context
@@ -51,7 +51,7 @@ def login(email: str, password: str, client_id: str, db: Session = Depends(get_d
     to_encode = {
         "sub": str(user.id),
         "email": user.email,
-        "client_id": str(user.client_id),
+        "tenant_id": str(user.tenant_id),
         "exp": expire,
         "jti": str(_uuid.uuid4()),
     }
@@ -63,7 +63,7 @@ def login(email: str, password: str, client_id: str, db: Session = Depends(get_d
     sess = crud.create_session(
         db,
         user.id,
-        user.client_id,
+        user.tenant_id,
         token,
         refresh_token,
         refresh_expires,
@@ -97,7 +97,7 @@ def login(email: str, password: str, client_id: str, db: Session = Depends(get_d
     )
     resp.set_cookie(
         settings.TENANT_COOKIE_NAME,
-        str(user.client_id),
+        str(user.tenant_id),
         httponly=False,
         secure=settings.TENANT_COOKIE_SECURE,
         samesite="lax",
@@ -124,7 +124,7 @@ def refresh(request: Request, db: Session = Depends(get_db)):
     tenant_cookie = request.cookies.get(settings.TENANT_COOKIE_NAME)
     if not tenant_cookie:
         raise HTTPException(status_code=400, detail="tenant_id cookie required")
-    if str(sess.client_id) != str(tenant_cookie):
+    if str(sess.tenant_id) != str(tenant_cookie):
         raise HTTPException(status_code=403, detail="tenant mismatch")
     import uuid as _uuid
 
@@ -133,7 +133,7 @@ def refresh(request: Request, db: Session = Depends(get_db)):
     new_access = jwt.encode(
         {
             "sub": str(sess.user_id),
-            "client_id": str(sess.client_id),
+            "tenant_id": str(sess.tenant_id),
             "exp": datetime.now(timezone.utc)
             + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
             "jti": str(_uuid.uuid4()),
@@ -175,7 +175,7 @@ def refresh(request: Request, db: Session = Depends(get_db)):
     )
     resp.set_cookie(
         settings.TENANT_COOKIE_NAME,
-        str(rotated.client_id),
+        str(rotated.tenant_id),
         httponly=False,
         secure=settings.TENANT_COOKIE_SECURE,
         samesite="lax",
@@ -225,7 +225,7 @@ def list_sessions(
             {
                 "id": str(s.id),
                 "user_id": str(s.user_id),
-                "client_id": str(s.client_id),
+                "tenant_id": str(s.tenant_id),
                 "expires_at": (
                     getattr(s, "expires_at").isoformat()
                     if getattr(s, "expires_at") is not None
@@ -262,14 +262,14 @@ def logout_all(
 
 @router.post("/roles", response_model=schemas.RoleOut)
 def create_role(role: schemas.RoleCreate, db: Session = Depends(get_db)):
-    if role.client_id is None:
-        raise HTTPException(status_code=400, detail="client_id required")
+    if role.tenant_id is None:
+        raise HTTPException(status_code=400, detail="tenant_id required")
     return crud.create_role(db, role)
 
 
 @router.get("/roles", response_model=List[schemas.RoleOut])
-def list_roles(client_id: str, db: Session = Depends(get_db)):
-    return crud.get_roles_by_tenant(db, client_id)
+def list_roles(tenant_id: str, db: Session = Depends(get_db)):
+    return crud.get_roles_by_tenant(db, tenant_id)
 
 
 @router.post("/users/{user_id}/roles")
@@ -302,19 +302,19 @@ def assign_role_test(
 
 @router.get("/users", response_model=List[schemas.UserOut])
 def list_users(
-    client_id: str,
+    tenant_id: str,
     db: Session = Depends(get_db),
     current_user=Depends(auth.get_current_user),
     authorized=Depends(auth.require_permission("users:list")),
 ):
-    if str(current_user.client_id) != str(client_id):
+    if str(current_user.tenant_id) != str(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
-    return crud.list_users_by_tenant(db, client_id)
+    return crud.list_users_by_tenant(db, tenant_id)
 
 
 @router.post("/audit-logs")
 def create_audit(
-    client_id: str,
+    tenant_id: str,
     action: str,
     user_id: Optional[str] = None,
     resource_type: Optional[str] = None,
@@ -324,11 +324,11 @@ def create_audit(
     current_user=Depends(auth.get_current_user),
     authorized=Depends(auth.require_permission("audit:create")),
 ):
-    if str(current_user.client_id) != str(client_id):
+    if str(current_user.tenant_id) != str(tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden")
     return crud.create_audit_log(
         db,
-        client_id,
+        tenant_id,
         action,
         user_id=user_id,
         resource_type=resource_type,

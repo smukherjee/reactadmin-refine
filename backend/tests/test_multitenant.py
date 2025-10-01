@@ -19,7 +19,7 @@ def test_refresh_tenant_mismatch(db_session, client):
         json={
             "email": "u1@example.com",
             "password": "pass1",
-            "client_id": ta["id"],
+            "tenant_id": ta["id"],
             "first_name": "U",
             "last_name": "One",
         },
@@ -30,7 +30,7 @@ def test_refresh_tenant_mismatch(db_session, client):
     # Login to obtain refresh cookie (TestClient will receive cookies)
     L = client.post(
         "/api/v1/auth/login",
-        params={"email": "u1@example.com", "password": "pass1", "client_id": ta["id"]},
+        params={"email": "u1@example.com", "password": "pass1", "tenant_id": ta["id"]},
     )
     assert L.status_code == 200
 
@@ -55,7 +55,7 @@ def test_logout_tenant_mismatch(db_session, client):
         json={
             "email": "lx@example.com",
             "password": "pass1",
-            "client_id": tx["id"],
+            "tenant_id": tx["id"],
             "first_name": "L",
             "last_name": "X",
         },
@@ -65,7 +65,7 @@ def test_logout_tenant_mismatch(db_session, client):
 
     L = client.post(
         "/api/v1/auth/login",
-        params={"email": "lx@example.com", "password": "pass1", "client_id": tx["id"]},
+        params={"email": "lx@example.com", "password": "pass1", "tenant_id": tx["id"]},
     )
     assert L.status_code == 200
     sess_id = client.cookies.get("session_id")
@@ -76,7 +76,7 @@ def test_logout_tenant_mismatch(db_session, client):
         json={
             "email": "ly@example.com",
             "password": "pass2",
-            "client_id": ty["id"],
+            "tenant_id": ty["id"],
             "first_name": "M",
             "last_name": "Y",
         },
@@ -85,7 +85,7 @@ def test_logout_tenant_mismatch(db_session, client):
     # login as other tenant user to get current_user in context
     L2 = client.post(
         "/api/v1/auth/login",
-        params={"email": "ly@example.com", "password": "pass2", "client_id": ty["id"]},
+        params={"email": "ly@example.com", "password": "pass2", "tenant_id": ty["id"]},
     )
     assert L2.status_code == 200
 

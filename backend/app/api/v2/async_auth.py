@@ -32,7 +32,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    client_id: Optional[str] = None
+    tenant_id: Optional[str] = None
 
 
 class LoginResponse(BaseModel):
@@ -45,7 +45,7 @@ class LoginResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
-    client_id: Optional[str] = None
+    tenant_id: Optional[str] = None
 
 
 class RefreshResponse(BaseModel):
@@ -56,7 +56,7 @@ class RefreshResponse(BaseModel):
 
 class SessionInfo(BaseModel):
     id: str
-    client_id: str
+    tenant_id: str
     ip_address: Optional[str]
     user_agent: Optional[str]
     created_at: str
@@ -92,14 +92,14 @@ async def async_login(
             qp = request.query_params
             email = qp.get("email")
             password = qp.get("password")
-            client_id_str = qp.get("client_id")
+            tenant_id_str = qp.get("tenant_id")
             # If not in query, try form body
             if not email or not password:
                 try:
                     form = await request.form()
                     email = email or form.get("email")
                     password = password or form.get("password")
-                    client_id_str = client_id_str or form.get("client_id")
+                    tenant_id_str = tenant_id_str or form.get("tenant_id")
                 except Exception:
                     pass
             # coerce UploadFile values to str when form parsing returns UploadFile
@@ -107,9 +107,9 @@ async def async_login(
                 email = getattr(email, "filename", None) or str(email)
             if isinstance(password, UploadFile):
                 password = getattr(password, "filename", None) or str(password)
-            if isinstance(client_id_str, UploadFile):
-                client_id_str = getattr(client_id_str, "filename", None) or str(
-                    client_id_str
+            if isinstance(tenant_id_str, UploadFile):
+                tenant_id_str = getattr(tenant_id_str, "filename", None) or str(
+                    tenant_id_str
                 )
 
             if not email or not password:
@@ -117,12 +117,12 @@ async def async_login(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="email and password required",
                 )
-            client_id = uuid.UUID(client_id_str) if client_id_str else uuid.uuid4()
+            tenant_id = uuid.UUID(tenant_id_str) if tenant_id_str else uuid.uuid4()
         else:
-            client_id = (
+            tenant_id = (
                 uuid.uuid4()
-                if not login_data.client_id
-                else uuid.UUID(login_data.client_id)
+                if not login_data.tenant_id
+                else uuid.UUID(login_data.tenant_id)
             )
             email = login_data.email
             password = login_data.password
@@ -134,7 +134,7 @@ async def async_login(
         user, session, access_token, refresh_token = await auth_repo.authenticate_user(
             email=email,
             password=password,
-            client_id=client_id,
+            tenant_id=tenant_id,
             ip_address=ip_address,
             user_agent=user_agent,
         )
@@ -151,7 +151,7 @@ async def async_login(
             "first_name": user.first_name,
             "last_name": user.last_name,
             "is_active": user.is_active,
-            "tenant_id": str(user.client_id),
+            "tenant_id": str(user.tenant_id),
             "roles": [role.name for role in user.roles] if user.roles else [],
         }
 
@@ -183,7 +183,7 @@ async def async_login(
         )
         resp.set_cookie(
             settings.TENANT_COOKIE_NAME,
-            str(user.client_id),
+            str(user.tenant_id),
             httponly=False,
             secure=settings.TENANT_COOKIE_SECURE,
             samesite="lax",
@@ -224,7 +224,7 @@ async def async_refresh_token(
                 detail="tenant_id cookie required",
             )
         try:
-            client_id = uuid.UUID(tenant_cookie)
+            tenant_id = uuid.UUID(tenant_cookie)
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -233,7 +233,7 @@ async def async_refresh_token(
 
         # Refresh tokens
         user, session, access_token, refresh_token = await auth_repo.refresh_tokens(
-            refresh_token=refresh_token, client_id=client_id
+            refresh_token=refresh_token, tenant_id=tenant_id
         )
 
         if not user or not session or not access_token or not refresh_token:
@@ -266,7 +266,7 @@ async def async_refresh_token(
         )
         resp.set_cookie(
             settings.TENANT_COOKIE_NAME,
-            str(session.client_id),
+            str(session.tenant_id),
             httponly=False,
             secure=settings.TENANT_COOKIE_SECURE,
             samesite="lax",
@@ -407,7 +407,7 @@ async def async_get_sessions(
             session_list.append(
                 SessionInfo(
                     id=session["id"],
-                    client_id=session["client_id"],
+                    tenant_id=session["tenant_id"],
                     ip_address=session["ip_address"],
                     user_agent=session["user_agent"],
                     created_at=(

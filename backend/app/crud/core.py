@@ -16,16 +16,15 @@ from backend.app.schemas import core as schemas
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
-def get_user_by_email(db: Session, email: str, client_id=None):
+def get_user_by_email(db: Session, email: str, tenant_id=None):
     q = db.query(models.User).filter(models.User.email == email)
-    if client_id:
-        # allow passing strings for UUIDs from HTTP params/tests
-        if isinstance(client_id, str):
+    if tenant_id:
+        if isinstance(tenant_id, str):
             try:
-                client_id = uuid.UUID(client_id)
-            except Exception:
-                pass
-        q = q.filter(models.User.client_id == client_id)
+                tenant_id = uuid.UUID(tenant_id)
+            except ValueError:
+                return None
+        q = q.filter(models.User.tenant_id == tenant_id)
     return q.first()
 
 
@@ -46,7 +45,7 @@ def create_user(db: Session, user: schemas.UserCreate):
         password_hash=hashed,
         first_name=user.first_name or "",
         last_name=user.last_name or "",
-        client_id=user.client_id,
+        tenant_id=user.tenant_id,
     )
     db.add(db_user)
     try:
@@ -55,7 +54,7 @@ def create_user(db: Session, user: schemas.UserCreate):
 
         # Initialize empty cache for new user (tenant-scoped)
         try:
-            cache.invalidate_user_cache(str(db_user.client_id), str(db_user.id))
+            cache.invalidate_user_cache(str(db_user.tenant_id), str(db_user.id))
         except Exception:
             # best-effort: ignore cache failures
             pass
@@ -98,7 +97,7 @@ def create_role(db: Session, role: schemas.RoleCreate):
         name=role.name,
         description=role.description or "",
         permissions=role.permissions or [],
-        client_id=role.client_id,
+        tenant_id=role.tenant_id,
     )
     db.add(db_r)
     # debug
@@ -111,19 +110,19 @@ def create_role(db: Session, role: schemas.RoleCreate):
 
     # Invalidate role-related caches (tenant-scoped)
     try:
-        cache.invalidate_role_cache(str(db_r.client_id), str(db_r.id))
+        cache.invalidate_role_cache(str(db_r.tenant_id), str(db_r.id))
     except Exception:
         pass
     return db_r
 
 
-def get_roles_by_tenant(db: Session, client_id):
-    if isinstance(client_id, str):
+def get_roles_by_tenant(db: Session, tenant_id):
+    if isinstance(tenant_id, str):
         try:
-            client_id = uuid.UUID(client_id)
+            tenant_id = uuid.UUID(tenant_id)
         except Exception:
             pass
-    return db.query(models.Role).filter(models.Role.client_id == client_id).all()
+    return db.query(models.Role).filter(models.Role.tenant_id == tenant_id).all()
 
 
 def assign_role_to_user(db: Session, user_id, role_id, assigned_by=None):
@@ -160,7 +159,7 @@ def assign_role_to_user(db: Session, user_id, role_id, assigned_by=None):
         try:
             u = db.query(models.User).filter(models.User.id == user_id).first()
             if u is not None:
-                cid = getattr(u, "client_id", None)
+                cid = getattr(u, "tenant_id", None)
                 if cid is not None:
                     cache.invalidate_user_cache(str(cid), str(user_id))
         except Exception:
@@ -184,14 +183,14 @@ def get_user_permissions(db: Session, user_id) -> List[str]:
     # Check cache first
     # Ensure we include user's tenant when checking cache
     u = db.query(models.User).filter(models.User.id == user_id).first()
-    client_id_val = None
+    tenant_id_val = None
     if u is not None:
-        cid = getattr(u, "client_id", None)
+        cid = getattr(u, "tenant_id", None)
         if cid is not None:
-            client_id_val = str(cid)
+            tenant_id_val = str(cid)
     cached_perms = None
-    if client_id_val is not None:
-        cached_perms = cache.get_cached_user_permissions(client_id_val, str(user_id))
+    if tenant_id_val is not None:
+        cached_perms = cache.get_cached_user_permissions(tenant_id_val, str(user_id))
     if cached_perms is not None:
         return cached_perms
 
@@ -212,9 +211,9 @@ def get_user_permissions(db: Session, user_id) -> List[str]:
     dedup = list(set(perms))
 
     # Cache the result (tenant-scoped)
-    if client_id_val is not None:
+    if tenant_id_val is not None:
         try:
-            cache.cache_user_permissions(client_id_val, str(user_id), dedup)
+            cache.cache_user_permissions(tenant_id_val, str(user_id), dedup)
         except Exception:
             pass
     return dedup
@@ -229,7 +228,7 @@ def _hash_token(token: str) -> str:
 def create_session(
     db: Session,
     user_id,
-    client_id,
+    tenant_id,
     access_token: str,
     refresh_token: str,
     expires_at: datetime,
@@ -248,7 +247,7 @@ def create_session(
 
     if existing:
         setattr(existing, "user_id", user_id)
-        setattr(existing, "client_id", client_id)
+        setattr(existing, "tenant_id", tenant_id)
         setattr(existing, "token_hash", token_hash)
         setattr(existing, "refresh_token_hash", refresh_hash)
         setattr(existing, "ip_address", ip_address)
@@ -259,7 +258,7 @@ def create_session(
         db.commit()
         db.refresh(existing)
         try:
-            cache.invalidate_user_cache(str(client_id), str(user_id))
+            cache.invalidate_user_cache(str(tenant_id), str(user_id))
         except Exception:
             pass
         return existing
@@ -268,7 +267,7 @@ def create_session(
         user_id=user_id,
         token_hash=token_hash,
         refresh_token_hash=refresh_hash,
-        client_id=client_id,
+        tenant_id=tenant_id,
         ip_address=ip_address,
         user_agent=user_agent,
         expires_at=expires_at,
@@ -278,7 +277,7 @@ def create_session(
     db.refresh(s)
     # invalidate caches for user (session state changed)
     try:
-        cache.invalidate_user_cache(str(client_id), str(user_id))
+        cache.invalidate_user_cache(str(tenant_id), str(user_id))
     except Exception:
         pass
     return s
@@ -330,7 +329,7 @@ def revoke_all_sessions(db: Session, user_id):
     try:
         u = db.query(models.User).filter(models.User.id == user_id).first()
         if u is not None:
-            cid = getattr(u, "client_id", None)
+            cid = getattr(u, "tenant_id", None)
             if cid is not None:
                 cache.invalidate_user_cache(str(cid), str(user_id))
     except Exception:
@@ -357,7 +356,7 @@ def rotate_refresh_token(
     db.commit()
     db.refresh(s)
     try:
-        cache.invalidate_user_cache(str(s.client_id), str(s.user_id))
+        cache.invalidate_user_cache(str(s.tenant_id), str(s.user_id))
     except Exception:
         pass
     return s
@@ -374,7 +373,7 @@ def revoke_session(db: Session, session_id):
     try:
         u = db.query(models.User).filter(models.User.id == uid).first()
         if u is not None:
-            cid = getattr(u, "client_id", None)
+            cid = getattr(u, "tenant_id", None)
             if cid is not None:
                 cache.invalidate_user_cache(str(cid), str(uid))
     except Exception:
@@ -409,7 +408,7 @@ def remove_user_role(db: Session, user_id, role_id):
         try:
             u = db.query(models.User).filter(models.User.id == user_id).first()
             if u is not None:
-                cid = getattr(u, "client_id", None)
+                cid = getattr(u, "tenant_id", None)
                 if cid is not None:
                     cache.invalidate_user_cache(str(cid), str(user_id))
         except Exception:
@@ -419,18 +418,18 @@ def remove_user_role(db: Session, user_id, role_id):
     return False
 
 
-def list_users_by_tenant(db: Session, client_id):
-    if isinstance(client_id, str):
+def list_users_by_tenant(db: Session, tenant_id):
+    if isinstance(tenant_id, str):
         try:
-            client_id = uuid.UUID(client_id)
+            tenant_id = uuid.UUID(tenant_id)
         except Exception:
             pass
-    return db.query(models.User).filter(models.User.client_id == client_id).all()
+    return db.query(models.User).filter(models.User.tenant_id == tenant_id).all()
 
 
 def create_audit_log(
     db: Session,
-    client_id,
+    tenant_id,
     action,
     user_id=None,
     resource_type=None,
@@ -439,10 +438,10 @@ def create_audit_log(
     ip_address=None,
     user_agent=None,
 ):
-    # normalize client_id to UUID if provided as string
-    if isinstance(client_id, str):
+    # normalize tenant_id to UUID if provided as string
+    if isinstance(tenant_id, str):
         try:
-            client_id = uuid.UUID(client_id)
+            tenant_id = uuid.UUID(tenant_id)
         except Exception:
             pass
     # normalize user_id/resource_id to UUID if strings
@@ -457,7 +456,7 @@ def create_audit_log(
         except Exception:
             pass
     al = models.AuditLog(
-        client_id=client_id,
+        tenant_id=tenant_id,
         user_id=user_id,
         action=action,
         resource_type=resource_type,

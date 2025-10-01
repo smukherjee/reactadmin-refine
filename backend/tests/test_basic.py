@@ -27,7 +27,7 @@ def test_create_tenant_and_user():
         json={
             "email": "alice@example.com",
             "password": "pass1234",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "first_name": "Alice",
             "last_name": "Example",
         },

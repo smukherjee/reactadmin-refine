@@ -14,12 +14,12 @@ from backend.app.crud.core import pwd_context
 from backend.app.db.core import get_async_db
 from backend.app.models.core import User
 from backend.app.repositories import get_user_repository
-from backend.app.schemas.core import UserCreate, UserOut, UserUpdate
+from backend.app.schemas.core import UserCreate, UserOut, UserUpdate, UserWithTenantOut
 
 router = APIRouter(prefix="/async/users", tags=["async-users"])
 
 
-@router.get("/me", response_model=UserOut)
+@router.get("/me", response_model=UserWithTenantOut)
 async def get_current_user_async(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
@@ -29,7 +29,13 @@ async def get_current_user_async(
     user = await repo.get_by_id(uuid.UUID(str(current_user.id)))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+    
+    # Convert to dict and add tenant fields
+    user_dict = user.__dict__.copy()
+    user_dict['current_tenant'] = user.tenant
+    user_dict['available_tenants'] = [user.tenant]
+    
+    return user_dict
 
 
 @router.get("/{user_id}", response_model=UserOut)
@@ -51,7 +57,7 @@ async def get_user_async(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Ensure user can only access users from same tenant
-    if str(user.client_id) != str(current_user.client_id):
+    if str(user.tenant_id) != str(current_user.tenant_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     return user
@@ -70,7 +76,7 @@ async def list_users_async(
 
     repo = await get_user_repository(db)
     users = await repo.list_by_tenant(
-        uuid.UUID(str(current_user.client_id)), skip=skip, limit=limit
+        uuid.UUID(str(current_user.tenant_id)), skip=skip, limit=limit
     )
     return users
 
@@ -83,7 +89,7 @@ async def create_user_async(
 ):
     """Create a new user using async database operations."""
     # Ensure user is creating in their own tenant
-    if user_data.client_id != current_user.client_id:
+    if user_data.tenant_id != current_user.tenant_id:
         raise HTTPException(
             status_code=403, detail="Cannot create user for different tenant"
         )
@@ -91,7 +97,7 @@ async def create_user_async(
     repo = await get_user_repository(db)
 
     # Check if user with email already exists
-    existing_user = await repo.get_by_email(user_data.email, user_data.client_id)
+    existing_user = await repo.get_by_email(user_data.email, user_data.tenant_id)
     if existing_user:
         raise HTTPException(
             status_code=400, detail="User with this email already exists"
@@ -126,7 +132,7 @@ async def update_user_async(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Ensure user can only update users from same tenant
-    if str(existing_user.client_id) != str(current_user.client_id):
+    if str(existing_user.tenant_id) != str(current_user.tenant_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     updated_user = await repo.update(user_uuid, user_data)
@@ -156,7 +162,7 @@ async def delete_user_async(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Ensure user can only delete users from same tenant
-    if str(existing_user.client_id) != str(current_user.client_id):
+    if str(existing_user.tenant_id) != str(current_user.tenant_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Don't allow users to delete themselves
@@ -190,7 +196,7 @@ async def get_user_permissions_async(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Ensure user can only access users from same tenant
-    if str(existing_user.client_id) != str(current_user.client_id):
+    if str(existing_user.tenant_id) != str(current_user.tenant_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     permissions = await repo.get_user_permissions(user_uuid)

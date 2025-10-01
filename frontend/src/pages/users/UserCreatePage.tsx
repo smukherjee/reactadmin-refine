@@ -86,7 +86,7 @@ export const UserCreatePage: React.FC = () => {
   };
 
   return (
-    <RBACGuard permissions={['users:write']} fallback={<div>Access denied</div>}>
+    <RBACGuard permissions={['users:write']}>
       <Box sx={{ p: 3 }}>
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
           <Button

@@ -33,7 +33,7 @@ import type { Role } from '../../types';
 export const RoleListPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const { query: { data, isLoading, isError } } = useList<Role>({
+  const { data, isLoading, isError } = useList<Role>({
     resource: 'roles',
     filters: searchTerm
       ? [
@@ -50,13 +50,13 @@ export const RoleListPage: React.FC = () => {
     return (
       <Box p={3}>
         <Alert severity="error">
-          Failed to load roles. Please check your connection and try again.
+          Failed to load roles. This may be due to missing tenant selection or insufficient permissions.
         </Alert>
       </Box>
     );
   }
 
-  const roles = data?.data || [];
+  const roles: Role[] = data?.data ?? [];
 
   return (
     <RBACGuard permissions={['read:roles']}>
@@ -133,7 +133,7 @@ export const RoleListPage: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  roles.map((role) => (
+                  roles.map((role: Role) => (
                     <TableRow key={role.id} hover>
                       <TableCell>
                         <Typography variant="subtitle2" fontWeight={600}>

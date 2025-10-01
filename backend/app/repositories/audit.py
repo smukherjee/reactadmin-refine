@@ -25,7 +25,7 @@ class AsyncAuditRepository:
 
     async def create(
         self,
-        client_id: uuid.UUID,
+        tenant_id: uuid.UUID,
         action: str,
         user_id: Optional[uuid.UUID] = None,
         resource_type: Optional[str] = None,
@@ -38,7 +38,7 @@ class AsyncAuditRepository:
         start_time = time.time()
         try:
             audit_log = AuditLog(
-                client_id=client_id,
+                tenant_id=tenant_id,
                 user_id=user_id,
                 action=action,
                 resource_type=resource_type,
@@ -83,7 +83,7 @@ class AsyncAuditRepository:
 
     async def list_by_tenant(
         self,
-        client_id: uuid.UUID,
+        tenant_id: uuid.UUID,
         skip: int = 0,
         limit: int = 100,
         action: Optional[str] = None,
@@ -93,7 +93,7 @@ class AsyncAuditRepository:
         """List audit logs by tenant with optional filtering."""
         start_time = time.time()
         try:
-            stmt = select(AuditLog).where(AuditLog.client_id == client_id)
+            stmt = select(AuditLog).where(AuditLog.tenant_id == tenant_id)
 
             # Apply filters
             if action:
@@ -114,7 +114,7 @@ class AsyncAuditRepository:
 
             return list(audit_logs)
         except Exception as e:
-            logger.error(f"Error listing audit logs for tenant {client_id}: {e}")
+            logger.error(f"Error listing audit logs for tenant {tenant_id}: {e}")
             raise
 
     async def list_by_user(
@@ -166,7 +166,7 @@ class AsyncAuditRepository:
             logger.error(f"Error deleting old audit logs: {e}")
             raise
 
-    async def get_statistics(self, client_id: uuid.UUID) -> Dict[str, Any]:
+    async def get_statistics(self, tenant_id: uuid.UUID) -> Dict[str, Any]:
         """Get audit log statistics for a tenant."""
         from datetime import datetime, timedelta, timezone
 
@@ -176,7 +176,7 @@ class AsyncAuditRepository:
         try:
             # Total count
             total_stmt = select(func.count(AuditLog.id)).where(
-                AuditLog.client_id == client_id
+                AuditLog.tenant_id == tenant_id
             )
             total_result = await self.session.execute(total_stmt)
             total_count = total_result.scalar()
@@ -184,7 +184,7 @@ class AsyncAuditRepository:
             # Count by action
             action_stmt = (
                 select(AuditLog.action, func.count(AuditLog.id))
-                .where(AuditLog.client_id == client_id)
+                .where(AuditLog.tenant_id == tenant_id)
                 .group_by(AuditLog.action)
                 .limit(10)
             )
@@ -195,7 +195,7 @@ class AsyncAuditRepository:
             # Recent activity (last 24 hours)
             yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
             recent_stmt = select(func.count(AuditLog.id)).where(
-                AuditLog.client_id == client_id, AuditLog.created_at > yesterday
+                AuditLog.tenant_id == tenant_id, AuditLog.created_at > yesterday
             )
             recent_result = await self.session.execute(recent_stmt)
             recent_count = recent_result.scalar()
@@ -211,7 +211,7 @@ class AsyncAuditRepository:
                 "actions": action_counts,
             }
         except Exception as e:
-            logger.error(f"Error getting audit statistics for tenant {client_id}: {e}")
+            logger.error(f"Error getting audit statistics for tenant {tenant_id}: {e}")
             raise
 
 

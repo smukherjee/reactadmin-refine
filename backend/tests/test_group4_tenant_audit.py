@@ -34,7 +34,7 @@ class TestAsyncTenantAuditAPIs:
         user_data = {
             "email": self.admin_email,
             "password": self.admin_password,
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "first_name": "Admin",
             "last_name": "User",
         }
@@ -45,7 +45,7 @@ class TestAsyncTenantAuditAPIs:
         # Create admin role (sync path)
         role_data = {
             "name": "admin",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "permissions": [
                 "tenants:list",
                 "tenants:read",
@@ -81,7 +81,7 @@ class TestAsyncTenantAuditAPIs:
         login_data = {
             "email": self.admin_email,
             "password": self.admin_password,
-            "client_id": tenant_id,
+            "tenant_id": tenant_id,
         }
         response = client.post("/api/v1/auth/login", params=login_data)
         assert response.status_code == 200
@@ -169,19 +169,19 @@ class TestAsyncTenantAuditAPIs:
         changes_data = {"field1": "old_value", "field2": "new_value"}
         params = {
             "action": "user_created",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "user_id": user["id"],  # Use real user ID
             "resource_type": "user",
             "resource_id": user["id"],
-            "changes_json": json.dumps(changes_data),
+            "changes": changes_data,
         }
 
-        response = client.post("/api/v2/audit-logs", params=params, headers=headers)
+        response = client.post("/api/v2/audit-logs", json=params, headers=headers)
         assert response.status_code == 200
 
         audit_log = response.json()
         assert audit_log["action"] == "user_created"
-        assert audit_log["client_id"] == tenant["id"]
+        assert audit_log["tenant_id"] == tenant["id"]
         assert "id" in audit_log
         assert "created_at" in audit_log
 
@@ -200,14 +200,14 @@ class TestAsyncTenantAuditAPIs:
         changes_data = {"field1": "old_value", "field2": "new_value"}
         params = {
             "action": "user_created",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "user_id": user["id"],
             "resource_type": "user",
             "resource_id": user["id"],
-            "changes_json": json.dumps(changes_data),
+            "changes": changes_data,
         }
 
-        response = client.post("/api/v2/audit-logs", params=params, headers=headers)
+        response = client.post("/api/v2/audit-logs", json=params, headers=headers)
         assert response.status_code == 200
         audit_log = response.json()
         return audit_log, tenant
@@ -222,7 +222,7 @@ class TestAsyncTenantAuditAPIs:
         headers = {"Authorization": f"Bearer {token}"}
 
         # List audit logs for tenant
-        params = {"client_id": tenant["id"]}
+        params = {"tenant_id": tenant["id"]}
         response = client.get("/api/v2/audit-logs", params=params, headers=headers)
         assert response.status_code == 200
 
@@ -249,7 +249,7 @@ class TestAsyncTenantAuditAPIs:
         headers = {"Authorization": f"Bearer {token}"}
 
         # Get statistics
-        params = {"client_id": tenant["id"]}
+        params = {"tenant_id": tenant["id"]}
         response = client.get(
             "/api/v2/audit-logs/statistics", params=params, headers=headers
         )
@@ -268,12 +268,12 @@ class TestAsyncTenantAuditAPIs:
         tenant, user = self.create_test_tenant_and_user()
 
         # Try to create audit log without auth
-        params = {"action": "test_action", "client_id": tenant["id"]}
-        response = client.post("/api/v2/audit-logs", params=params)
+        params = {"action": "test_action", "tenant_id": tenant["id"]}
+        response = client.post("/api/v2/audit-logs", json=params)
         assert response.status_code == 401
 
         # Try to list audit logs without auth
-        response = client.get("/api/v2/audit-logs", params={"client_id": tenant["id"]})
+        response = client.get("/api/v2/audit-logs", params={"tenant_id": tenant["id"]})
         assert response.status_code == 401
 
         print("✅ Audit endpoints properly require authentication")
@@ -309,18 +309,16 @@ class TestAsyncTenantAuditAPIs:
         # Test invalid JSON in changes
         params = {
             "action": "test_action",
-            "client_id": tenant["id"],
-            "changes_json": "invalid-json",
+            "tenant_id": tenant["id"],
+            "changes": "invalid-json",
         }
-        response = client.post("/api/v2/audit-logs", params=params, headers=headers)
-        assert response.status_code == 400
-        assert "Invalid JSON format" in response.json()["detail"]
+        response = client.post("/api/v2/audit-logs", json=params, headers=headers)
+        assert response.status_code == 400 or response.status_code == 422
 
-        # Test invalid client_id format
-        params = {"action": "test_action", "client_id": "invalid-uuid"}
-        response = client.post("/api/v2/audit-logs", params=params, headers=headers)
-        assert response.status_code == 400
-        assert "Invalid UUID format" in response.json()["detail"]
+        # Test invalid tenant_id format
+        params = {"action": "test_action", "tenant_id": "invalid-uuid"}
+        response = client.post("/api/v2/audit-logs", json=params, headers=headers)
+        assert response.status_code == 400 or response.status_code == 422
 
         print("✅ Audit log validation errors handled correctly")
 

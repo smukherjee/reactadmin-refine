@@ -93,11 +93,11 @@ def require_permission(permission: str):
 
 
 def tenant_from_request(request: Request) -> Optional[str]:
-    """Return client_id from JWT payload attached to request.state if present.
+    """Return tenant_id from JWT payload attached to request.state if present.
 
     Returns None if no payload present.
     """
     payload = getattr(request.state, "jwt_payload", None)
     if not payload:
         return None
-    return payload.get("client_id")
+    return payload.get("tenant_id")

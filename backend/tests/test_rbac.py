@@ -19,7 +19,7 @@ def test_protected_endpoint_allowed_and_forbidden(db_session, client):
         json={
             "email": "alice.rbac@example.com",
             "password": "pass1234",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "first_name": "Alice",
             "last_name": "RBAC",
         },
@@ -32,7 +32,7 @@ def test_protected_endpoint_allowed_and_forbidden(db_session, client):
         json={
             "email": "bob.rbac@example.com",
             "password": "pass1234",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "first_name": "Bob",
             "last_name": "RBAC",
         },
@@ -45,7 +45,7 @@ def test_protected_endpoint_allowed_and_forbidden(db_session, client):
         params={
             "email": "alice.rbac@example.com",
             "password": "pass1234",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
         },
     )
     assert la.status_code == 200
@@ -53,7 +53,7 @@ def test_protected_endpoint_allowed_and_forbidden(db_session, client):
     headers = {"Authorization": f"Bearer {token}"}
 
     role_obj = schemas.RoleCreate(
-        name="reader", permissions=["read:protected"], client_id=tenant["id"]
+        name="reader", permissions=["read:protected"], tenant_id=tenant["id"]
     )
     role_db = crud.create_role(db_session, role_obj)
     crud.assign_role_to_user(
@@ -69,7 +69,7 @@ def test_protected_endpoint_allowed_and_forbidden(db_session, client):
         params={
             "email": "bob.rbac@example.com",
             "password": "pass1234",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
         },
     )
     assert lb.status_code == 200
@@ -88,7 +88,7 @@ def test_permission_combination_and_expiry(db_session, client):
         json={
             "email": "carol@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "Carol",
             "last_name": "X",
         },
@@ -96,7 +96,7 @@ def test_permission_combination_and_expiry(db_session, client):
     assert ru.status_code == 200
     carol = ru.json()
     role_obj = schemas.RoleCreate(
-        name="combo", permissions=["read:protected", "roles:create"], client_id=t["id"]
+        name="combo", permissions=["read:protected", "roles:create"], tenant_id=t["id"]
     )
     role = crud.create_role(db_session, role_obj)
     crud.assign_role_to_user(
@@ -111,7 +111,7 @@ def test_permission_combination_and_expiry(db_session, client):
         params={
             "email": "carol@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert la.status_code == 200
@@ -123,7 +123,7 @@ def test_permission_combination_and_expiry(db_session, client):
         json={
             "email": "dave@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "Dave",
             "last_name": "Y",
         },
@@ -134,7 +134,7 @@ def test_permission_combination_and_expiry(db_session, client):
         params={
             "email": "dave@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert lb.status_code == 200
@@ -152,7 +152,7 @@ def test_role_expiry(db_session, client):
         json={
             "email": "eve@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "Eve",
             "last_name": "Z",
         },
@@ -160,7 +160,7 @@ def test_role_expiry(db_session, client):
     assert ru.status_code == 200
     eve = ru.json()
     role_obj = schemas.RoleCreate(
-        name="temp", permissions=["read:protected"], client_id=t["id"]
+        name="temp", permissions=["read:protected"], tenant_id=t["id"]
     )
     role = crud.create_role(db_session, role_obj)
     from datetime import timezone
@@ -183,7 +183,7 @@ def test_role_expiry(db_session, client):
         params={
             "email": "eve@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert le.status_code == 200
@@ -201,7 +201,7 @@ def test_multiple_roles_aggregation(db_session, client):
         json={
             "email": "frank@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "Frank",
             "last_name": "W",
         },
@@ -211,13 +211,13 @@ def test_multiple_roles_aggregation(db_session, client):
     role1 = crud.create_role(
         db_session,
         schemas.RoleCreate(
-            name="reader", permissions=["read:protected"], client_id=t["id"]
+            name="reader", permissions=["read:protected"], tenant_id=t["id"]
         ),
     )
     role2 = crud.create_role(
         db_session,
         schemas.RoleCreate(
-            name="creator", permissions=["roles:create"], client_id=t["id"]
+            name="creator", permissions=["roles:create"], tenant_id=t["id"]
         ),
     )
     crud.assign_role_to_user(
@@ -234,7 +234,7 @@ def test_multiple_roles_aggregation(db_session, client):
         params={
             "email": "frank@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert lf.status_code == 200
@@ -252,7 +252,7 @@ def test_permission_revocation(db_session, client):
         json={
             "email": "gina@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "Gina",
             "last_name": "V",
         },
@@ -262,7 +262,7 @@ def test_permission_revocation(db_session, client):
     role = crud.create_role(
         db_session,
         schemas.RoleCreate(
-            name="reader", permissions=["read:protected"], client_id=t["id"]
+            name="reader", permissions=["read:protected"], tenant_id=t["id"]
         ),
     )
     ur = crud.assign_role_to_user(
@@ -282,7 +282,7 @@ def test_permission_revocation(db_session, client):
         params={
             "email": "gina@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert lg.status_code == 200
@@ -300,7 +300,7 @@ def test_forbidden_action(db_session, client):
         json={
             "email": "harry@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "Harry",
             "last_name": "U",
         },
@@ -312,7 +312,7 @@ def test_forbidden_action(db_session, client):
         params={
             "email": "harry@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert lh.status_code == 200

@@ -142,7 +142,7 @@ class OWASPSecurityTester:
         # Test 2: Horizontal privilege escalation
         try:
             # Try to access another client's data
-            response = self.session.get(f"{self.base_url}/invoices?client_id=999")
+            response = self.session.get(f"{self.base_url}/invoices?tenant_id=999")
             if response.status_code == 200 and response.json():
                 issues.append(
                     SecurityIssue(
@@ -150,7 +150,7 @@ class OWASPSecurityTester:
                         title="Horizontal Privilege Escalation",
                         description="Can access other client's data by manipulating client_id",
                         severity=Severity.CRITICAL,
-                        evidence=f"Accessed client_id=999 data: {len(response.json())} records",
+                        evidence=f"Accessed tenant_id=999 data: {len(response.json())} records",
                         recommendation="Validate client_id against authenticated user's permissions",
                         cwe_id="CWE-639",
                         owasp_category="A01:2021",

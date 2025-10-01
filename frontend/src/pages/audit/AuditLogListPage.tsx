@@ -75,7 +75,7 @@ export const AuditLogListPage: React.FC = () => {
     });
   }
 
-  const { query: { data, isLoading, isError } } = useList<AuditLog>({
+  const { data, isLoading, isError } = useList<AuditLog>({
     resource: 'audit-logs',
     filters,
     sorters: [
@@ -90,13 +90,13 @@ export const AuditLogListPage: React.FC = () => {
     return (
       <Box p={3}>
         <Alert severity="error">
-          Failed to load audit logs. Please check your connection and try again.
+          Failed to load audit logs. This may be due to missing tenant selection or insufficient permissions.
         </Alert>
       </Box>
     );
   }
 
-  const auditLogs = data?.data || [];
+  const auditLogs: AuditLog[] = data?.data ?? [];
 
   return (
     <RBACGuard permissions={['read:audit_logs']}>
@@ -192,7 +192,7 @@ export const AuditLogListPage: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  auditLogs.map((log) => (
+                  auditLogs.map((log: AuditLog) => (
                     <TableRow key={log.id} hover>
                       <TableCell>
                         <Typography variant="body2">

@@ -35,19 +35,19 @@ async def async_create_role(
 ):
     """Create a new role (async)."""
     try:
-        # Validate client_id is provided
-        if role.client_id is None:
+        # Validate tenant_id is provided
+        if role.tenant_id is None:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="client_id required"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="tenant_id required"
             )
 
         # Only allow creating roles within the same tenant
-        validate_tenant_access_async(current_user, str(role.client_id))
+        validate_tenant_access_async(current_user, str(role.tenant_id))
 
         role_repo = await get_role_repository(db)
 
         # Check if role name already exists in tenant
-        existing_role = await role_repo.get_by_name(role.name, role.client_id)
+        existing_role = await role_repo.get_by_name(role.name, role.tenant_id)
         if existing_role:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -58,7 +58,7 @@ async def async_create_role(
         new_role = await role_repo.create(role)
 
         logger.info(
-            f"Created role {new_role.id} '{new_role.name}' for tenant {role.client_id}"
+            f"Created role {new_role.id} '{new_role.name}' for tenant {role.tenant_id}"
         )
         return new_role
 
@@ -74,7 +74,7 @@ async def async_create_role(
 
 @router.get("/roles", response_model=List[RoleOut])
 async def async_list_roles(
-    client_id: str = Query(..., description="Tenant/Client ID to filter roles"),
+    tenant_id: str = Query(..., description="Tenant/Client ID to filter roles"),
     skip: int = Query(0, ge=0, description="Number of roles to skip"),
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of roles to return"
@@ -85,23 +85,23 @@ async def async_list_roles(
     """List roles by tenant (async)."""
     try:
         # Tenant-scoped access validation
-        validate_tenant_access_async(current_user, client_id)
+        validate_tenant_access_async(current_user, tenant_id)
 
         role_repo = await get_role_repository(db)
 
-        # Convert client_id to UUID
+        # Convert tenant_id to UUID
         try:
-            client_uuid = uuid.UUID(client_id)
+            client_uuid = uuid.UUID(tenant_id)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid client_id format",
+                detail="Invalid tenant_id format",
             )
 
         # Get roles by tenant
         roles = await role_repo.list_by_tenant(client_uuid, skip=skip, limit=limit)
 
-        logger.info(f"Retrieved {len(roles)} roles for tenant {client_id}")
+        logger.info(f"Retrieved {len(roles)} roles for tenant {tenant_id}")
         return roles
 
     except HTTPException:
@@ -187,7 +187,7 @@ async def async_protected_resource(
             "message": "Access granted to protected resource",
             "user": str(current_user.id),
             "user_email": current_user.email,
-            "tenant": str(current_user.client_id),
+            "tenant": str(current_user.tenant_id),
             "permissions": list(user_permissions),
         }
 
@@ -227,7 +227,7 @@ async def async_get_role(
             )
 
         # Validate tenant access
-        validate_tenant_access_async(current_user, str(role.client_id))
+        validate_tenant_access_async(current_user, str(role.tenant_id))
 
         return role
 
@@ -267,7 +267,7 @@ async def async_delete_role(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Role not found"
             )
 
-        validate_tenant_access_async(current_user, str(role.client_id))
+        validate_tenant_access_async(current_user, str(role.tenant_id))
 
         # Delete role
         success = await role_repo.delete(role_uuid)

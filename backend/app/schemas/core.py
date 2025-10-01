@@ -28,12 +28,12 @@ class RoleBase(BaseModel):
 
 
 class RoleCreate(RoleBase):
-    client_id: Optional[UUID] = None
+    tenant_id: Optional[UUID] = None
 
 
 class RoleOut(RoleBase):
     id: UUID
-    client_id: Optional[UUID]
+    tenant_id: Optional[UUID]
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -45,7 +45,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
-    client_id: UUID
+    tenant_id: UUID
 
 
 class UserUpdate(BaseModel):
@@ -58,8 +58,29 @@ class UserUpdate(BaseModel):
 
 class UserOut(UserBase):
     id: UUID
-    client_id: UUID
+    tenant_id: UUID
     is_active: bool
     is_verified: bool
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserWithTenantOut(UserBase):
+    id: UUID
+    tenant_id: UUID
+    is_active: bool
+    is_verified: bool
+    created_at: datetime
+    current_tenant: TenantOut
+    available_tenants: List[TenantOut] = []
+    roles: List[RoleOut] = []
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditLogCreate(BaseModel):
+    action: str
+    tenant_id: str
+    user_id: Optional[str] = None
+    resource_type: Optional[str] = None
+    resource_id: Optional[str] = None
+    changes: Optional[dict] = None

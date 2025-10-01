@@ -5,7 +5,6 @@ audit logging operations. It uses async repositories and does not rely on
 sync fallbacks (tests should use api/v1 for sync writes or use an async DB).
 """
 
-import json
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -25,7 +24,7 @@ from backend.app.repositories.tenants import (
     AsyncTenantRepository,
     get_tenant_repository,
 )
-from backend.app.schemas.core import TenantCreate, TenantOut
+from backend.app.schemas.core import TenantCreate, TenantOut, AuditLogCreate
 
 logger = get_logger(__name__)
 
@@ -139,33 +138,32 @@ async def async_get_tenant(
 
 @router.post("/audit-logs")
 async def async_create_audit_log(
+    audit_data: AuditLogCreate,
     request: Request,
-    action: str,
-    client_id: str = Query(..., description="Tenant/Client ID"),
-    user_id: Optional[str] = Query(
-        None, description="User ID who performed the action"
-    ),
-    resource_type: Optional[str] = Query(None, description="Type of resource affected"),
-    resource_id: Optional[str] = Query(None, description="ID of resource affected"),
-    changes_json: Optional[str] = Query(
-        None, description="JSON string of changes made"
-    ),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user_async),
     authorized: bool = Depends(require_permission_async("audit:create")),
 ):
     """Create a new audit log entry (async)."""
     try:
-        # Validate client_id format first so invalid IDs return 400 before tenant access checks
+        # Extract data from the model
+        action = audit_data.action
+        tenant_id = audit_data.tenant_id
+        user_id = audit_data.user_id
+        resource_type = audit_data.resource_type
+        resource_id = audit_data.resource_id
+        changes = audit_data.changes
+
+        # Validate tenant_id format first so invalid IDs return 400 before tenant access checks
         try:
-            client_uuid = uuid.UUID(client_id)
+            tenant_uuid = uuid.UUID(tenant_id)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid UUID format"
             )
 
         # Validate tenant access
-        validate_tenant_access_async(current_user, client_id)
+        validate_tenant_access_async(current_user, tenant_id)
 
         audit_repo = await get_audit_repository(db)
 
@@ -178,24 +176,13 @@ async def async_create_audit_log(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid UUID format"
             )
 
-        # Parse changes JSON if provided
-        changes = None
-        if changes_json:
-            try:
-                changes = json.loads(changes_json)
-            except json.JSONDecodeError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid JSON format for changes",
-                )
-
         # Extract client info from request
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
 
         # Create audit log
         audit_log = await audit_repo.create(
-            client_id=client_uuid,
+            tenant_id=tenant_uuid,
             action=action,
             user_id=user_uuid,
             resource_type=resource_type,
@@ -211,7 +198,7 @@ async def async_create_audit_log(
 
         return {
             "id": str(audit_log.id),
-            "client_id": str(audit_log.client_id),
+            "tenant_id": str(audit_log.tenant_id),
             "action": audit_log.action,
             "user_id": (
                 str(audit_log.user_id) if audit_log.user_id is not None else None
@@ -239,7 +226,7 @@ async def async_create_audit_log(
 
 @router.get("/audit-logs")
 async def async_list_audit_logs(
-    client_id: str = Query(..., description="Tenant/Client ID to filter audit logs"),
+    tenant_id: str = Query(..., description="Tenant ID to filter audit logs"),
     skip: int = Query(0, ge=0, description="Number of audit logs to skip"),
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of audit logs to return"
@@ -254,13 +241,13 @@ async def async_list_audit_logs(
     """List audit logs by tenant with filtering (async)."""
     try:
         # Validate tenant access
-        validate_tenant_access_async(current_user, client_id)
+        validate_tenant_access_async(current_user, tenant_id)
 
         audit_repo = await get_audit_repository(db)
 
         # Convert string UUIDs
         try:
-            client_uuid = uuid.UUID(client_id)
+            tenant_uuid = uuid.UUID(tenant_id)
             user_uuid = uuid.UUID(user_id) if user_id else None
         except ValueError:
             raise HTTPException(
@@ -269,7 +256,7 @@ async def async_list_audit_logs(
 
         # Get audit logs with filtering
         audit_logs = await audit_repo.list_by_tenant(
-            client_id=client_uuid,
+            tenant_id=tenant_uuid,
             skip=skip,
             limit=limit,
             action=action,
@@ -283,7 +270,7 @@ async def async_list_audit_logs(
             result.append(
                 {
                     "id": str(log.id),
-                    "client_id": str(log.client_id),
+                    "tenant_id": str(log.tenant_id),
                     "action": log.action,
                     "user_id": str(log.user_id) if log.user_id is not None else None,
                     "resource_type": log.resource_type,
@@ -297,7 +284,7 @@ async def async_list_audit_logs(
                 }
             )
 
-        logger.info(f"Retrieved {len(audit_logs)} audit logs for tenant {client_id}")
+        logger.info(f"Retrieved {len(audit_logs)} audit logs for tenant {tenant_id}")
         return result
 
     except HTTPException:
@@ -312,7 +299,7 @@ async def async_list_audit_logs(
 
 @router.get("/audit-logs/statistics")
 async def async_get_audit_statistics(
-    client_id: str = Query(..., description="Tenant/Client ID for statistics"),
+    tenant_id: str = Query(..., description="Tenant ID for statistics"),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user_async),
     authorized: bool = Depends(require_permission_async("audit:read")),
@@ -320,23 +307,23 @@ async def async_get_audit_statistics(
     """Get audit log statistics for a tenant (async)."""
     try:
         # Validate tenant access
-        validate_tenant_access_async(current_user, client_id)
+        validate_tenant_access_async(current_user, tenant_id)
 
         audit_repo = await get_audit_repository(db)
 
-        # Convert client_id to UUID
+        # Convert tenant_id to UUID
         try:
-            client_uuid = uuid.UUID(client_id)
+            tenant_uuid = uuid.UUID(tenant_id)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid client_id format",
+                detail="Invalid tenant_id format",
             )
 
         # Get statistics
-        stats = await audit_repo.get_statistics(client_uuid)
+        stats = await audit_repo.get_statistics(tenant_uuid)
 
-        logger.info(f"Retrieved audit statistics for tenant {client_id}")
+        logger.info(f"Retrieved audit statistics for tenant {tenant_id}")
         return stats
 
     except HTTPException:

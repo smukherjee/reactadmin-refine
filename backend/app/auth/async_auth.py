@@ -105,9 +105,9 @@ async def get_user_permissions_async(user_id: uuid.UUID, db: AsyncSession) -> Se
 
 def validate_tenant_access_async(current_user: User, requested_client_id: str):
     """Validate that the current user can access the requested tenant."""
-    if str(current_user.client_id) != str(requested_client_id):
+    if str(current_user.tenant_id) != str(requested_client_id):
         logger.warning(
-            f"User {current_user.id} attempted to access tenant {requested_client_id}, but belongs to {current_user.client_id}"
+            f"User {current_user.id} attempted to access tenant {requested_client_id}, but belongs to {current_user.tenant_id}"
         )
         raise HTTPException(
             status_code=403, detail="Forbidden: Cannot access different tenant"

@@ -16,6 +16,8 @@ import {
 } from '@mui/material';
 import { LockOutlined as LockIcon } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
+import { useNavigate, useLocation } from 'react-router-dom';
+import type { Location } from 'react-router-dom';
 import type { LoginRequest } from '../../types';
 
 interface LoginFormData extends LoginRequest {
@@ -24,6 +26,9 @@ interface LoginFormData extends LoginRequest {
 
 export const LoginPage: React.FC = () => {
   const { mutate: login } = useLogin<LoginRequest>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromLocation = (location.state as { from?: Location } | undefined)?.from;
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -33,8 +38,9 @@ export const LoginPage: React.FC = () => {
     formState: { errors },
   } = useForm<LoginFormData>({
     defaultValues: {
-      username: '',
+      email: '',
       password: '',
+      tenant_id: '',
       remember: false,
     },
   });
@@ -43,10 +49,30 @@ export const LoginPage: React.FC = () => {
     try {
       setError('');
       setIsLoading(true);
-      await login({
-        username: data.username,
-        password: data.password,
-      });
+      await login(
+        {
+          email: data.email.trim(),
+          password: data.password,
+          tenant_id: data.tenant_id?.trim() || undefined,
+        },
+        {
+          onSuccess: () => {
+            const storedRedirect = sessionStorage.getItem('post_login_redirect');
+
+            let redirectPath = '/';
+
+            if (fromLocation && fromLocation.pathname && fromLocation.pathname !== '/login') {
+              redirectPath = `${fromLocation.pathname}${fromLocation.search ?? ''}${fromLocation.hash ?? ''}`;
+            } else if (storedRedirect && storedRedirect !== '/login') {
+              redirectPath = storedRedirect;
+            }
+
+            sessionStorage.removeItem('post_login_redirect');
+
+            navigate(redirectPath || '/', { replace: true });
+          },
+        }
+      );
     } catch (err: any) {
       setError(err?.message || 'Login failed. Please check your credentials.');
     } finally {
@@ -95,13 +121,14 @@ export const LoginPage: React.FC = () => {
 
             <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
               <Controller
-                name="username"
+                name="email"
                 control={control}
                 rules={{
-                  required: 'Username is required',
-                  minLength: {
-                    value: 3,
-                    message: 'Username must be at least 3 characters',
+                  required: 'Email is required',
+                  pattern: {
+                    value:
+                      /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                    message: 'Enter a valid email address',
                   },
                 }}
                 render={({ field }) => (
@@ -110,11 +137,12 @@ export const LoginPage: React.FC = () => {
                     margin="normal"
                     required
                     fullWidth
-                    label="Username or Email"
-                    autoComplete="username"
+                    label="Email"
+                    type="email"
+                    autoComplete="email"
                     autoFocus
-                    error={!!errors.username}
-                    helperText={errors.username?.message}
+                    error={!!errors.email}
+                    helperText={errors.email?.message}
                     disabled={isLoading}
                   />
                 )}
@@ -141,6 +169,22 @@ export const LoginPage: React.FC = () => {
                     autoComplete="current-password"
                     error={!!errors.password}
                     helperText={errors.password?.message}
+                    disabled={isLoading}
+                  />
+                )}
+              />
+
+              <Controller
+                name="tenant_id"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    margin="normal"
+                    fullWidth
+                    label="Tenant ID (optional)"
+                    autoComplete="organization"
+                    helperText="Provide a tenant/client identifier if required."
                     disabled={isLoading}
                   />
                 )}
@@ -185,10 +229,10 @@ export const LoginPage: React.FC = () => {
                   Demo Credentials:
                 </Typography>
                 <Typography variant="caption" display="block">
-                  Admin: admin / password123
+                  Admin: admin@example.com / password123
                 </Typography>
                 <Typography variant="caption" display="block">
-                  User: user / password123
+                  User: user@example.com / password123
                 </Typography>
               </Box>
             </Box>

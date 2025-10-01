@@ -44,7 +44,7 @@ def test_user_permission_caching(db_session, client):
         json={
             "email": "cache@example.com",
             "password": "pass1234",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "first_name": "Cache",
             "last_name": "User",
         },
@@ -56,7 +56,7 @@ def test_user_permission_caching(db_session, client):
     role_obj = schemas.RoleCreate(
         name="cache_tester",
         permissions=["read:test", "write:test"],
-        client_id=tenant["id"],
+        tenant_id=tenant["id"],
     )
     role = crud.create_role(db_session, role_obj)
     crud.assign_role_to_user(
@@ -94,7 +94,7 @@ def test_cache_invalidation(db_session, client):
         json={
             "email": "invalidate@example.com",
             "password": "pass1234",
-            "client_id": tenant["id"],
+            "tenant_id": tenant["id"],
             "first_name": "Invalidate",
             "last_name": "User",
         },
@@ -110,7 +110,7 @@ def test_cache_invalidation(db_session, client):
     role_obj = schemas.RoleCreate(
         name="invalidate_tester",
         permissions=["read:invalidate"],
-        client_id=tenant["id"],
+        tenant_id=tenant["id"],
     )
     role = crud.create_role(db_session, role_obj)
     crud.assign_role_to_user(

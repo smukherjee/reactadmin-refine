@@ -1,11 +1,12 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-import type { 
-  LoginRequest, 
-  LoginResponse, 
+import type {
+  LoginRequest,
+  LoginResponse,
+  RefreshResponse,
   ApiResponse,
   PaginatedResponse,
-  ListParams 
+  ListParams,
 } from '../types';
 
 class ApiService {
@@ -13,7 +14,7 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    this.baseURL = (import.meta.env.VITE_API_URL || '/api/v2').replace(/\/$/, '');
     this.api = axios.create({
       baseURL: this.baseURL,
       timeout: 10000,
@@ -97,6 +98,8 @@ class ApiService {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('current_tenant_id');
+    localStorage.removeItem('session_id');
+    localStorage.removeItem('user');
   }
 
   private getCurrentTenantId(): string | null {
@@ -104,19 +107,26 @@ class ApiService {
   }
 
   // Auth endpoints
-  async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const formData = new FormData();
-    formData.append('username', credentials.username);
-    formData.append('password', credentials.password);
+  async   login(credentials: { email: string; password: string; tenant_id?: string | null }): Promise<LoginResponse> {
+    const payload: Record<string, string> = {
+      email: credentials.email,
+      password: credentials.password,
+    };
 
-    const response = await this.api.post<LoginResponse>('/auth/login', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    if (credentials.tenant_id) {
+      payload.tenant_id = credentials.tenant_id;
+    }
 
-    const { access_token, refresh_token, user } = response.data;
+    const response = await this.api.post<LoginResponse>('/auth/login', payload);
+
+    const { access_token, refresh_token, user, session_id } = response.data;
     this.setTokens(access_token, refresh_token);
+    if (session_id) {
+      localStorage.setItem('session_id', session_id);
+    }
+    
+    // Store user data for tenant management
+    localStorage.setItem('user', JSON.stringify(user));
     
     // Set current tenant
     if (user.current_tenant) {
@@ -126,8 +136,8 @@ class ApiService {
     return response.data;
   }
 
-  async refreshToken(refreshToken: string): Promise<LoginResponse> {
-    const response = await this.api.post<LoginResponse>('/auth/refresh', {
+  async refreshToken(refreshToken: string): Promise<RefreshResponse> {
+    const response = await this.api.post<RefreshResponse>('/auth/refresh', {
       refresh_token: refreshToken,
     });
     return response.data;
@@ -135,7 +145,16 @@ class ApiService {
 
   async logout(): Promise<void> {
     try {
-      await this.api.post('/auth/logout');
+      const sessionId = localStorage.getItem('session_id');
+      const config = sessionId
+        ? {
+            params: {
+              session_id: sessionId,
+            },
+          }
+        : undefined;
+
+      await this.api.post('/auth/logout', null, config);
     } finally {
       this.clearTokens();
     }
@@ -148,11 +167,27 @@ class ApiService {
   ): Promise<PaginatedResponse<T>> {
     const queryParams = new URLSearchParams();
     
-    if (params.page) queryParams.append('page', params.page.toString());
-    if (params.size) queryParams.append('size', params.size.toString());
+    // Convert page/size to skip/limit for backend compatibility
+    if (params.page && params.size) {
+      const skip = (params.page - 1) * params.size;
+      queryParams.append('skip', skip.toString());
+      queryParams.append('limit', params.size.toString());
+    } else {
+      if (params.size) queryParams.append('limit', params.size.toString());
+    }
+    
     if (params.sort) queryParams.append('sort', params.sort);
     if (params.order) queryParams.append('order', params.order);
     if (params.search) queryParams.append('search', params.search);
+    
+    // Add tenant_id for tenant-aware resources (REQUIRED by backend)
+    const tenantId = this.getCurrentTenantId();
+    if (['users', 'roles', 'audit-logs'].includes(resource)) {
+      if (!tenantId) {
+        throw new Error(`Tenant ID is required for ${resource} operations. Please switch tenant or login again.`);
+      }
+      queryParams.append('tenant_id', tenantId);
+    }
     
     // Add filters
     if (params.filters) {
@@ -194,13 +229,92 @@ class ApiService {
 
   // Custom endpoints
   async getCurrentUser() {
-    const response = await this.api.get('/auth/me');
-    return response.data;
+    try {
+      const response = await this.api.get('/async/users/me');
+      const userData = response.data;
+      
+      // If user has a tenant_id but no current_tenant, fetch tenant info
+      if (userData.tenant_id && !userData.current_tenant) {
+        try {
+          // Fetch user roles to determine access level
+          let userRoles = userData.roles || [];
+          if (!userRoles.length) {
+            try {
+              const rolesResponse = await this.api.get(`/users/${userData.id}/roles`);
+              userRoles = Array.isArray(rolesResponse.data) ? rolesResponse.data : rolesResponse.data.data || [];
+            } catch (roleError) {
+              console.warn('Could not fetch user roles:', roleError);
+            }
+          }
+          
+          // Check if user is superadmin by checking their roles
+          const isSuperAdmin = userRoles.some((role: any) => 
+            role.name === 'superadmin' || 
+            (role.permissions && role.permissions.includes('*'))
+          );
+          
+          if (isSuperAdmin) {
+            // Superadmin can access all tenants
+            const allTenantsResponse = await this.api.get('/tenants');
+            const allTenants = Array.isArray(allTenantsResponse.data) 
+              ? allTenantsResponse.data 
+              : allTenantsResponse.data.data || [];
+            
+            userData.available_tenants = allTenants.map((tenant: any) => ({
+              id: tenant.id,
+              name: tenant.name,
+              domain: tenant.domain
+            }));
+            
+            // Check if there's a stored current tenant
+            const storedTenantId = localStorage.getItem('current_tenant_id');
+            if (storedTenantId) {
+              userData.current_tenant = userData.available_tenants.find(
+                (tenant: any) => tenant.id === storedTenantId
+              ) || null;
+            }
+            
+            // If no current tenant selected, superadmin needs to choose
+            if (!userData.current_tenant && userData.available_tenants.length > 0) {
+              userData.current_tenant = null; // Force tenant selection
+            }
+          } else {
+            // Regular user - tied to their specific tenant
+            const tenantResponse = await this.api.get(`/tenants/${userData.tenant_id}`);
+            const tenantData = tenantResponse.data;
+            
+            userData.current_tenant = {
+              id: tenantData.id,
+              name: tenantData.name,
+              domain: tenantData.domain
+            };
+            
+            // Regular users only have access to their assigned tenant
+            userData.available_tenants = [userData.current_tenant];
+            
+            // Auto-set the tenant for regular users
+            localStorage.setItem('current_tenant_id', tenantData.id);
+          }
+        } catch (tenantError) {
+          console.warn('Could not fetch tenant info:', tenantError);
+        }
+      }
+      
+      return userData;
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+      throw error;
+    }
   }
 
   async switchTenant(tenantId: string) {
     const response = await this.api.post('/auth/switch-tenant', { tenant_id: tenantId });
     localStorage.setItem('current_tenant_id', tenantId);
+    return response.data;
+  }
+
+  async getTenants() {
+    const response = await this.api.get('/tenants');
     return response.data;
   }
 

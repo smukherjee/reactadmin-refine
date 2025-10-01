@@ -60,29 +60,37 @@ export interface AuditLog {
 export interface AuthUser {
   id: string;
   email: string;
-  username: string;
-  first_name: string;
-  last_name: string;
-  is_active: boolean;
-  is_superuser: boolean;
-  tenant_id: string;
-  roles: Role[];
-  permissions: string[];
-  current_tenant: Tenant;
-  available_tenants: Tenant[];
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  is_active?: boolean;
+  is_superuser?: boolean;
+  tenant_id?: string;
+  roles?: Role[];
+  permissions?: string[];
+  current_tenant?: Tenant;
+  available_tenants?: Tenant[];
 }
 
 export interface LoginRequest {
-  username: string;
+  email: string;
   password: string;
+  tenant_id?: string | null;
 }
 
 export interface LoginResponse {
   access_token: string;
   refresh_token: string;
   token_type: string;
-  expires_in: number;
+  session_id: string;
   user: AuthUser;
+  expires_in?: number;
+}
+
+export interface RefreshResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
 }
 
 export interface RefreshTokenRequest {

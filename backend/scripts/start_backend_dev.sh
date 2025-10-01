@@ -6,19 +6,22 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+# The script lives in <repo>/backend/scripts. We want REPO_ROOT to be the
+# repository root (project root), not the 'backend' package directory. Move
+# two levels up from the scripts dir to reach the repo root.
+REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 # Defaults
 PORT=8000
 RUN_TESTS=false
-REDIS_MODE="docker"
+REDIS_MODE="local"
 FORCE_RESTART=false
 # Run in background and return control by default (use --foreground to block)
 DETACH=true
 
 # PID files directory
-PIDS_DIR="$REPO_ROOT/run"
-LOG_DIR="$REPO_ROOT/logs"
+PIDS_DIR="$REPO_ROOT/backend/run"
+LOG_DIR="$REPO_ROOT/backend/logs"
 mkdir -p "$PIDS_DIR" "$LOG_DIR"
 
 # Rotation: keep previous logs timestamped. Simple rotation: move existing to .TIMESTAMP
@@ -157,9 +160,9 @@ function start_uvicorn() {
   # use nohup to survive terminal disconnect; prefer uvicorn CLI if available
   rotate_log "$LOG_DIR/uvicorn.log"
   if command -v uvicorn >/dev/null 2>&1; then
-    nohup uvicorn backend.main:app --reload --host 127.0.0.1 --port "$PORT" >"$LOG_DIR/uvicorn.log" 2>&1 &
+    nohup uvicorn backend.main:app --reload --host localhost --port "$PORT" >"$LOG_DIR/uvicorn.log" 2>&1 &
   else
-    nohup "$PYTHON_CMD" -m uvicorn backend.main:app --reload --host 127.0.0.1 --port "$PORT" >"$LOG_DIR/uvicorn.log" 2>&1 &
+    nohup "$PYTHON_CMD" -m uvicorn backend.main:app --reload --host localhost --port "$PORT" >"$LOG_DIR/uvicorn.log" 2>&1 &
   fi
   UVICORN_PID=$!
   echo "$UVICORN_PID" > "$PIDS_DIR/uvicorn.pid"

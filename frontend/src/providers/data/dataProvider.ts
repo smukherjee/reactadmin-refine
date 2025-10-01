@@ -6,10 +6,11 @@ export const dataProvider: DataProvider = {
   getList: async ({ resource, pagination, sorters, filters }) => {
     const params: ListParams = {};
 
-    // Handle pagination
+    // Handle pagination with proper type safety
     if (pagination) {
-      params.page = (pagination as any).current ?? 1;
-      params.size = (pagination as any).pageSize ?? 10;
+      const paginationData = pagination as { current?: number; pageSize?: number };
+      params.page = paginationData.current ?? 1;
+      params.size = paginationData.pageSize ?? 10;
     }
 
     // Handle sorting
@@ -37,11 +38,31 @@ export const dataProvider: DataProvider = {
     try {
       const response = await apiService.getList<any>(resource, params);
       
-      return {
-        data: response.data,
-        total: response.total,
-      };
-    } catch (error) {
+      // Backend returns direct arrays, normalize for Refine
+      if (Array.isArray(response)) {
+        return {
+          data: response,
+          total: response.length,
+        };
+      } else if (response.data && Array.isArray(response.data)) {
+        // Handle wrapped responses
+        return {
+          data: response.data,
+          total: response.total || response.data.length,
+        };
+      } else {
+        // Handle single items or unknown formats
+        const data = Array.isArray(response) ? response : [response];
+        return {
+          data,
+          total: data.length,
+        };
+      }
+    } catch (error: any) {
+      // Enhanced error handling for tenant issues
+      if (error?.message?.includes('Tenant ID is required')) {
+        throw new Error('Please select a tenant to view this data.');
+      }
       console.error(`Error fetching ${resource}:`, error);
       throw error;
     }
@@ -49,7 +70,7 @@ export const dataProvider: DataProvider = {
 
   getOne: async ({ resource, id }) => {
     try {
-      const data = await apiService.getOne(resource, id as string);
+      const data = await apiService.getOne(resource, String(id));
       return { data } as any;
     } catch (error) {
       console.error(`Error fetching ${resource} with id ${id}:`, error);
@@ -69,7 +90,7 @@ export const dataProvider: DataProvider = {
 
   update: async ({ resource, id, variables }) => {
     try {
-      const data = await apiService.update(resource, id as string, variables as any);
+      const data = await apiService.update(resource, String(id), variables as any);
       return { data } as any;
     } catch (error) {
       console.error(`Error updating ${resource} with id ${id}:`, error);
@@ -79,7 +100,7 @@ export const dataProvider: DataProvider = {
 
   deleteOne: async ({ resource, id }) => {
     try {
-      await apiService.delete(resource, id as string);
+      await apiService.delete(resource, String(id));
       return { data: { id } } as any;
     } catch (error) {
       console.error(`Error deleting ${resource} with id ${id}:`, error);
@@ -89,7 +110,8 @@ export const dataProvider: DataProvider = {
 
   deleteMany: async ({ resource, ids }) => {
     try {
-      await apiService.deleteMany(resource, ids as string[]);
+      const stringIds = ids.map(id => String(id));
+      await apiService.deleteMany(resource, stringIds);
       return { data: ids.map(id => ({ id })) } as any;
     } catch (error) {
       console.error(`Error deleting multiple ${resource}:`, error);
@@ -98,7 +120,7 @@ export const dataProvider: DataProvider = {
   },
 
   getApiUrl: () => {
-    return import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    return import.meta.env.VITE_API_URL || '/api/v2';
   },
 };
 

@@ -31,7 +31,7 @@ def test_refresh_cookie_flags_on_login():
         data={
             "email": "nonexistent@example.com",
             "password": "bad",
-            "client_id": "000",
+            "tenant_id": "000",
         },
     )
     # Expect 401 for invalid credentials (or 400/422 depending on validation) but ensure no 500
@@ -50,7 +50,7 @@ def test_sql_injection_attempt_does_not_crash():
     payload = {
         "email": "' OR '1'='1@example.com",
         "password": "x', ' OR '1'='1",
-        "client_id": "000",
+        "tenant_id": "000",
     }
     r = client.post("/api/v1/auth/login", data=payload)
     # Application should not return 500 for crafted input; expect handled auth failure or validation error
@@ -79,7 +79,7 @@ def test_auth_misconfiguration_and_broken_access_controls(db_session, client):
         json={
             "email": "usera@example.com",
             "password": "pass1234",
-            "client_id": t1["id"],
+            "tenant_id": t1["id"],
             "first_name": "A",
             "last_name": "One",
         },
@@ -90,7 +90,7 @@ def test_auth_misconfiguration_and_broken_access_controls(db_session, client):
         json={
             "email": "userb@example.com",
             "password": "pass1234",
-            "client_id": t2["id"],
+            "tenant_id": t2["id"],
             "first_name": "B",
             "last_name": "Two",
         },
@@ -103,7 +103,7 @@ def test_auth_misconfiguration_and_broken_access_controls(db_session, client):
         params={
             "email": "usera@example.com",
             "password": "pass1234",
-            "client_id": t1["id"],
+            "tenant_id": t1["id"],
         },
     )
     assert la.status_code == 200
@@ -117,7 +117,7 @@ def test_auth_misconfiguration_and_broken_access_controls(db_session, client):
     if r.status_code == 200:
         # Ensure the returned list does not contain tenant B's internal-only data visible to other tenants
         users = r.json()
-        assert all(u.get("client_id") != t2["id"] for u in users) or users == []
+        assert all(u.get("tenant_id") != t2["id"] for u in users) or users == []
 
 
 def test_insecure_deserialization_and_malformed_payloads(client):
@@ -143,7 +143,7 @@ def test_jwt_and_token_hardening(client):
         json={
             "email": "jwt@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
             "first_name": "J",
             "last_name": "W",
         },
@@ -153,7 +153,7 @@ def test_jwt_and_token_hardening(client):
         params={
             "email": "jwt@example.com",
             "password": "pass1234",
-            "client_id": t["id"],
+            "tenant_id": t["id"],
         },
     )
     assert l.status_code == 200

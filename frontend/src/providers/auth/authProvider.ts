@@ -3,9 +3,9 @@ import { apiService } from '../../services/api';
 import type { AuthUser, LoginRequest } from '../../types';
 
 export const authProvider: AuthProvider = {
-  login: async ({ username, password }: LoginRequest) => {
+  login: async ({ email, password, tenant_id }: LoginRequest) => {
     try {
-      const response = await apiService.login({ username, password });
+      const response = await apiService.login({ email, password, tenant_id });
       
       // Store user data
       localStorage.setItem('user', JSON.stringify(response.user));
@@ -36,6 +36,8 @@ export const authProvider: AuthProvider = {
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
       localStorage.removeItem('current_tenant_id');
+      localStorage.removeItem('session_id');
+      sessionStorage.removeItem('post_login_redirect');
     }
 
     return {
@@ -45,33 +47,27 @@ export const authProvider: AuthProvider = {
   },
 
   check: async () => {
-    // Temporarily skip authentication for testing
-    return {
-      authenticated: true,
-    };
+    const token = localStorage.getItem('access_token');
     
-    // Original authentication logic (commented out for now)
-    // const token = localStorage.getItem('access_token');
-    
-    // if (!token) {
-    //   return {
-    //     authenticated: false,
-    //     redirectTo: '/login',
-    //   };
-    // }
+    if (!token) {
+      return {
+        authenticated: false,
+        redirectTo: '/login',
+      };
+    }
 
-    // try {
-    //   // Verify token is still valid
-    //   await apiService.getCurrentUser();
-    //   return {
-    //     authenticated: true,
-    //   };
-    // } catch (error) {
-    //   return {
-    //     authenticated: false,
-    //     redirectTo: '/login',
-    //   };
-    // }
+    try {
+      // Verify token is still valid
+      await apiService.getCurrentUser();
+      return {
+        authenticated: true,
+      };
+    } catch (error) {
+      return {
+        authenticated: false,
+        redirectTo: '/login',
+      };
+    }
   },
 
   getPermissions: async () => {
