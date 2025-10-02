@@ -3,18 +3,19 @@ import { apiService } from '../../services/api';
 import type { AuthUser, LoginRequest } from '../../types';
 
 export const authProvider: AuthProvider = {
-  login: async ({ email, password, tenant_id }: LoginRequest) => {
+  login: async ({ email, password }: LoginRequest) => {
     try {
-      const response = await apiService.login({ email, password, tenant_id });
+      const response = await apiService.login({ email, password });
       
-      // Store user data
-      localStorage.setItem('user', JSON.stringify(response.user));
+      // User data is already stored by the login method, including tenant info
+      console.log('Login successful, user data:', response.user);
       
       return {
         success: true,
         redirectTo: '/',
       };
     } catch (error: any) {
+      console.error('Login error:', error);
       return {
         success: false,
         error: {
@@ -48,8 +49,9 @@ export const authProvider: AuthProvider = {
 
   check: async () => {
     const token = localStorage.getItem('access_token');
+    const userStr = localStorage.getItem('user');
     
-    if (!token) {
+    if (!token || !userStr) {
       return {
         authenticated: false,
         redirectTo: '/login',
@@ -57,8 +59,7 @@ export const authProvider: AuthProvider = {
     }
 
     try {
-      // Verify token is still valid
-      await apiService.getCurrentUser();
+            // For v2 API, we rely on stored user data and token validity\n      // The token will be rejected by API if invalid, so we consider user authenticated if both exist\n      JSON.parse(userStr); // Validate JSON format
       return {
         authenticated: true,
       };

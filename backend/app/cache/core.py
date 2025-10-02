@@ -120,16 +120,16 @@ def is_redis_available() -> bool:
 
 def cache_key(
     prefix: str,
-    *args: Union[str, uuid.UUID],
-    client_id: Union[str, uuid.UUID, None] = None,
+    *args: Any,
+    tenant_id: Union[str, uuid.UUID, None] = None,
 ) -> str:
-    """Generate a cache key optionally namespaced by client_id then prefix and arguments.
+    """Generate a cache key optionally namespaced by tenant_id then prefix and arguments.
 
-    Example: cache_key('user_permissions', user_id, client_id=client_id) -> "<client_id>:user_permissions:<user_id>"
+    Example: cache_key('user_permissions', user_id, tenant_id=tenant_id) -> "<tenant_id>:user_permissions:<user_id>"
     """
     parts = []
-    if client_id is not None:
-        parts.append(str(client_id))
+    if tenant_id is not None:
+        parts.append(str(tenant_id))
     parts.append(prefix)
     for arg in args:
         parts.append(str(arg))
@@ -224,20 +224,20 @@ def delete_pattern(pattern: str) -> int:
         return 0
 
 
-# (No legacy helpers) All cache functions require explicit client_id + id parameters.
+# (No legacy helpers) All cache functions require explicit tenant_id + id parameters.
 def invalidate_user_cache(
-    client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
-) -> None:
+    tenant_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
+) -> dict:
     """Invalidate all cache entries for a user within a tenant.
 
     This function requires both client_id and user_id to be provided. Keys are tenant-prefixed.
     """
     user_id_str = str(user_id)
-    cid = str(client_id)
+    tid = str(tenant_id)
     keys = [
-        cache_key("user_permissions", user_id_str, client_id=cid),
-        cache_key("user_roles", user_id_str, client_id=cid),
-        cache_key("user_data", user_id_str, client_id=cid),
+        cache_key("user_permissions", user_id_str, tenant_id=tid),
+        cache_key("user_roles", user_id_str, tenant_id=tid),
+        cache_key("user_data", user_id_str, tenant_id=tid),
     ]
     for k in keys:
         delete_cached(k)
@@ -245,57 +245,57 @@ def invalidate_user_cache(
         {
             "type": "user_permissions_invalidate",
             "user_id": user_id_str,
-            "client_id": cid,
+            "tenant_id": tid,
         }
     )
 
 
 def invalidate_role_cache(
-    client_id: Union[str, uuid.UUID], role_id: Union[str, uuid.UUID]
+    tenant_id: Union[str, uuid.UUID], role_id: Union[str, uuid.UUID]
 ) -> None:
     """Invalidate cache entries related to a role within a tenant."""
     role_id_str = str(role_id)
-    cid = str(client_id)
-    delete_pattern(f"{cid}:user_permissions:*")
-    delete_pattern(f"{cid}:user_roles:*")
+    tid = str(tenant_id)
+    delete_pattern(f"{tid}:user_permissions:*")
+    delete_pattern(f"{tid}:user_roles:*")
     publish_invalidation(
-        {"type": "role_invalidate", "role_id": role_id_str, "client_id": cid}
+        {"type": "role_invalidate", "role_id": role_id_str, "tenant_id": tid}
     )
 
 
 def cache_user_permissions(
-    client_id: Union[str, uuid.UUID],
+    tenant_id: Union[str, uuid.UUID],
     user_id: Union[str, uuid.UUID],
     permissions: List[str],
 ) -> None:
-    """Cache user permissions for a tenant (requires client_id and user_id)."""
-    key = cache_key("user_permissions", user_id, client_id=client_id)
+    """Cache user permissions for a tenant (requires tenant_id and user_id)."""
+    key = cache_key("user_permissions", user_id, tenant_id=tenant_id)
     set_cached(key, permissions)
 
 
 def get_cached_user_permissions(
-    client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
+    tenant_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
 ) -> Optional[List[str]]:
-    """Get cached user permissions for a tenant (requires client_id and user_id)."""
-    key = cache_key("user_permissions", user_id, client_id=client_id)
+    """Get cached user permissions for a tenant (requires tenant_id and user_id)."""
+    key = cache_key("user_permissions", user_id, tenant_id=tenant_id)
     return get_cached(key)
 
 
 def cache_user_roles(
-    client_id: Union[str, uuid.UUID],
+    tenant_id: Union[str, uuid.UUID],
     user_id: Union[str, uuid.UUID],
     roles: List[Dict[str, Any]],
 ) -> None:
     """Cache user roles for a tenant."""
-    key = cache_key("user_roles", user_id, client_id=client_id)
+    key = cache_key("user_roles", user_id, tenant_id=tenant_id)
     set_cached(key, roles)
 
 
 def get_cached_user_roles(
-    client_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
+    tenant_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID]
 ) -> Optional[List[Dict[str, Any]]]:
     """Get cached user roles for a tenant."""
-    key = cache_key("user_roles", user_id, client_id=client_id)
+    key = cache_key("user_roles", user_id, tenant_id=tenant_id)
     return get_cached(key)
 
 

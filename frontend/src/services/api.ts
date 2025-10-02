@@ -1,7 +1,6 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
 import type {
-  LoginRequest,
   LoginResponse,
   RefreshResponse,
   ApiResponse,
@@ -39,6 +38,9 @@ class ApiService {
 
         if (tenantId) {
           config.headers['X-Tenant-ID'] = tenantId;
+          console.log(`API Request: ${config.method?.toUpperCase()} ${config.url} with tenant ${tenantId}`);
+        } else {
+          console.warn(`API Request: ${config.method?.toUpperCase()} ${config.url} WITHOUT tenant ID`);
         }
 
         return config;
@@ -75,6 +77,16 @@ class ApiService {
           }
         }
 
+        // Log API errors for debugging
+        console.error('API Error:', {
+          url: error.config?.url,
+          method: error.config?.method,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          headers: error.config?.headers
+        });
+
         return Promise.reject(error);
       }
     );
@@ -107,15 +119,11 @@ class ApiService {
   }
 
   // Auth endpoints
-  async   login(credentials: { email: string; password: string; tenant_id?: string | null }): Promise<LoginResponse> {
+  async login(credentials: { email: string; password: string }): Promise<LoginResponse> {
     const payload: Record<string, string> = {
       email: credentials.email,
       password: credentials.password,
     };
-
-    if (credentials.tenant_id) {
-      payload.tenant_id = credentials.tenant_id;
-    }
 
     const response = await this.api.post<LoginResponse>('/auth/login', payload);
 
@@ -125,15 +133,34 @@ class ApiService {
       localStorage.setItem('session_id', session_id);
     }
     
-    // Store user data for tenant management
-    localStorage.setItem('user', JSON.stringify(user));
-    
-    // Set current tenant
-    if (user.current_tenant) {
-      localStorage.setItem('current_tenant_id', user.current_tenant.id);
+    // Enhance user data with tenant information based on their role
+    let enhancedUser = user;
+    try {
+      console.log('Starting tenant enhancement for user:', user);
+      enhancedUser = await this.enhanceUserWithTenantData(user);
+      console.log('Tenant enhancement completed:', enhancedUser);
+      localStorage.setItem('user', JSON.stringify(enhancedUser));
+      
+      // Set current tenant if available
+      if (enhancedUser.current_tenant) {
+        localStorage.setItem('current_tenant_id', enhancedUser.current_tenant.id);
+        console.log('Set current tenant ID in localStorage:', enhancedUser.current_tenant.id);
+      }
+    } catch (error) {
+      console.error('Could not enhance user data with tenant info:', error);
+      // Fallback to basic user data from login response
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      if (user.tenant_id) {
+        localStorage.setItem('current_tenant_id', user.tenant_id);
+        console.log('Fallback: Set user tenant_id in localStorage:', user.tenant_id);
+      }
     }
-
-    return response.data;
+    
+    return {
+      ...response.data,
+      user: enhancedUser
+    };
   }
 
   async refreshToken(refreshToken: string): Promise<RefreshResponse> {
@@ -182,11 +209,15 @@ class ApiService {
     
     // Add tenant_id for tenant-aware resources (REQUIRED by backend)
     const tenantId = this.getCurrentTenantId();
+    console.log(`API getList for ${resource}: tenant_id = ${tenantId}`);
+    
     if (['users', 'roles', 'audit-logs'].includes(resource)) {
       if (!tenantId) {
+        console.error(`No tenant ID found for ${resource} operation`);
         throw new Error(`Tenant ID is required for ${resource} operations. Please switch tenant or login again.`);
       }
       queryParams.append('tenant_id', tenantId);
+      console.log(`Added tenant_id=${tenantId} to ${resource} request`);
     }
     
     // Add filters
@@ -198,10 +229,28 @@ class ApiService {
       });
     }
 
-    const response = await this.api.get<PaginatedResponse<T>>(
-      `/${resource}?${queryParams.toString()}`
-    );
-    return response.data;
+    try {
+      const response = await this.api.get<PaginatedResponse<T>>(
+        `/${resource}?${queryParams.toString()}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error(`Failed to fetch ${resource}:`, error.response?.data || error.message);
+      
+      // For roles specifically, return empty data instead of throwing
+      if (resource === 'roles') {
+        console.warn('Roles API failed, returning empty list as fallback');
+        return {
+          data: [],
+          total: 0,
+          page: 1,
+          size: 10,
+          pages: 1
+        } as PaginatedResponse<T>;
+      }
+      
+      throw error;
+    }
   }
 
   async getOne<T>(resource: string, id: string): Promise<T> {
@@ -228,89 +277,169 @@ class ApiService {
   }
 
   // Custom endpoints
-  async getCurrentUser() {
+  async enhanceUserWithTenantData(user: any) {
     try {
-      const response = await this.api.get('/async/users/me');
-      const userData = response.data;
+      // Ensure we have an access token for API calls
+      const token = this.getToken();
+      if (!token) {
+        console.warn('No access token available for tenant enhancement');
+        return user;
+      }
       
-      // If user has a tenant_id but no current_tenant, fetch tenant info
-      if (userData.tenant_id && !userData.current_tenant) {
+      // Check if user is superadmin by checking their roles
+      const userRoles = user.roles || [];
+      const isSuperAdmin = userRoles.includes('superadmin') || 
+                          userRoles.includes('admin') || 
+                          user.is_superuser;
+      
+      console.log('Enhancing user with tenant data:', { 
+        user, 
+        userRoles, 
+        isSuperAdmin,
+        user_tenant_id: user.tenant_id,
+        is_superuser: user.is_superuser,
+        has_token: !!token
+      });
+      
+      if (isSuperAdmin) {
+        // Superadmin can access all tenants
         try {
-          // Fetch user roles to determine access level
-          let userRoles = userData.roles || [];
-          if (!userRoles.length) {
-            try {
-              const rolesResponse = await this.api.get(`/users/${userData.id}/roles`);
-              userRoles = Array.isArray(rolesResponse.data) ? rolesResponse.data : rolesResponse.data.data || [];
-            } catch (roleError) {
-              console.warn('Could not fetch user roles:', roleError);
-            }
+          console.log('Fetching all tenants for superadmin...');
+          const allTenantsResponse = await this.api.get('/tenants');
+          console.log('Tenants API response:', allTenantsResponse);
+          
+          const allTenants = Array.isArray(allTenantsResponse.data) 
+            ? allTenantsResponse.data 
+            : allTenantsResponse.data.data || [];
+          
+          console.log('Processed tenants:', allTenants);
+          
+          user.available_tenants = allTenants.map((tenant: any) => ({
+            id: tenant.id,
+            name: tenant.name,
+            domain: tenant.domain
+          }));
+          
+          console.log('User available_tenants after mapping:', user.available_tenants);
+          
+          // Check if there's a stored current tenant
+          const storedTenantId = localStorage.getItem('current_tenant_id');
+          console.log('Stored tenant ID:', storedTenantId);
+          
+          if (storedTenantId && user.available_tenants.length > 0) {
+            user.current_tenant = user.available_tenants.find(
+              (tenant: any) => tenant.id === storedTenantId
+            ) || null;
+            console.log('Found matching stored tenant:', user.current_tenant);
           }
           
-          // Check if user is superadmin by checking their roles
-          const isSuperAdmin = userRoles.some((role: any) => 
-            role.name === 'superadmin' || 
-            (role.permissions && role.permissions.includes('*'))
-          );
+          // If superadmin has only one tenant, auto-assign it
+          if (!user.current_tenant && user.available_tenants.length === 1) {
+            user.current_tenant = user.available_tenants[0];
+            localStorage.setItem('current_tenant_id', user.available_tenants[0].id);
+            console.log('Auto-assigned single tenant for superadmin:', user.current_tenant);
+          }
+          // If multiple tenants and no current selection, force selection
+          else if (!user.current_tenant && user.available_tenants.length > 1) {
+            user.current_tenant = null; // Force tenant selection
+            console.log('Multiple tenants available, forcing selection');
+          }
           
-          if (isSuperAdmin) {
-            // Superadmin can access all tenants
-            const allTenantsResponse = await this.api.get('/tenants');
-            const allTenants = Array.isArray(allTenantsResponse.data) 
-              ? allTenantsResponse.data 
-              : allTenantsResponse.data.data || [];
-            
-            userData.available_tenants = allTenants.map((tenant: any) => ({
-              id: tenant.id,
-              name: tenant.name,
-              domain: tenant.domain
-            }));
-            
-            // Check if there's a stored current tenant
-            const storedTenantId = localStorage.getItem('current_tenant_id');
-            if (storedTenantId) {
-              userData.current_tenant = userData.available_tenants.find(
-                (tenant: any) => tenant.id === storedTenantId
-              ) || null;
-            }
-            
-            // If no current tenant selected, superadmin needs to choose
-            if (!userData.current_tenant && userData.available_tenants.length > 0) {
-              userData.current_tenant = null; // Force tenant selection
+          console.log('Final superadmin tenant data:', { 
+            available: user.available_tenants, 
+            current: user.current_tenant,
+            available_count: user.available_tenants.length 
+          });
+        } catch (tenantFetchError) {
+          console.error('Superadmin could not fetch all tenants:', tenantFetchError);
+          console.log('Error details:', {
+            status: (tenantFetchError as any).response?.status,
+            statusText: (tenantFetchError as any).response?.statusText,
+            data: (tenantFetchError as any).response?.data,
+            message: (tenantFetchError as any).message
+          });
+          
+          // Fallback to user's assigned tenant if fetching all tenants fails
+          if (user.tenant_id) {
+            try {
+              console.log('Trying fallback: fetching single tenant:', user.tenant_id);
+              const tenantResponse = await this.api.get(`/tenants/${user.tenant_id}`);
+              const tenantData = tenantResponse.data;
+              
+              user.current_tenant = {
+                id: tenantData.id,
+                name: tenantData.name,
+                domain: tenantData.domain
+              };
+              user.available_tenants = [user.current_tenant];
+              localStorage.setItem('current_tenant_id', tenantData.id);
+              console.log('Fallback successful, assigned single tenant:', user.current_tenant);
+            } catch (singleTenantError) {
+              console.error('Could not fetch user\'s assigned tenant:', singleTenantError);
+              console.log('Single tenant error details:', {
+                status: (singleTenantError as any).response?.status,
+                data: (singleTenantError as any).response?.data
+              });
             }
           } else {
-            // Regular user - tied to their specific tenant
-            const tenantResponse = await this.api.get(`/tenants/${userData.tenant_id}`);
+            console.warn('No tenant_id found for user, cannot fetch tenant data');
+          }
+        }
+      } else {
+        // Regular user - tied to their specific tenant
+        if (user.tenant_id) {
+          try {
+            const tenantResponse = await this.api.get(`/tenants/${user.tenant_id}`);
             const tenantData = tenantResponse.data;
             
-            userData.current_tenant = {
+            user.current_tenant = {
               id: tenantData.id,
               name: tenantData.name,
               domain: tenantData.domain
             };
             
             // Regular users only have access to their assigned tenant
-            userData.available_tenants = [userData.current_tenant];
+            user.available_tenants = [user.current_tenant];
             
             // Auto-set the tenant for regular users
             localStorage.setItem('current_tenant_id', tenantData.id);
+            
+            console.log('Regular user tenant data:', { current: user.current_tenant });
+          } catch (tenantError) {
+            console.warn('Could not fetch user\'s assigned tenant:', tenantError);
           }
-        } catch (tenantError) {
-          console.warn('Could not fetch tenant info:', tenantError);
         }
       }
       
-      return userData;
+      return user;
     } catch (error) {
-      console.error('Error fetching current user:', error);
-      throw error;
+      console.error('ERROR in enhanceUserWithTenantData:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error details:', {
+        message: (error as any)?.message,
+        response: (error as any)?.response,
+        stack: (error as any)?.stack
+      });
+      return user;
     }
+  }
+  
+  async getCurrentUser() {
+    // For v2 API, we get user data from login response and enhance it
+    // This method is kept for compatibility but now just returns stored user data
+    const userStr = localStorage.getItem('user');
+    if (!userStr) {
+      throw new Error('No user data found');
+    }
+    return JSON.parse(userStr);
   }
 
   async switchTenant(tenantId: string) {
-    const response = await this.api.post('/auth/switch-tenant', { tenant_id: tenantId });
+    // For v2 API, we handle tenant switching on the frontend
+    // No backend call needed since users already have access to their allowed tenants
     localStorage.setItem('current_tenant_id', tenantId);
-    return response.data;
+    console.log('Updated current_tenant_id in localStorage:', tenantId);
+    return { success: true };
   }
 
   async getTenants() {

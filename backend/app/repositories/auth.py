@@ -36,7 +36,7 @@ class AsyncAuthRepository:
         self,
         email: str,
         password: str,
-        client_id: uuid.UUID,
+        tenant_id: Optional[uuid.UUID] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
     ) -> Tuple[Optional[User], Optional[Session], Optional[str], Optional[str]]:
@@ -72,16 +72,19 @@ class AsyncAuthRepository:
                 logger.warning(f"Failed authentication attempt for email: {email}")
                 return None, None, None, None
 
+            # Use user's tenant_id if not provided
+            actual_tenant_id = tenant_id or uuid.UUID(str(user.tenant_id))
+
             # Update last login
             user_id = uuid.UUID(str(user.id))
             await self._update_last_login(user_id)
 
             # Create tokens
             access_token = create_access_token(
-                {"sub": str(user.id), "client_id": str(client_id)}
+                {"sub": str(user.id), "tenant_id": str(actual_tenant_id)}
             )
             refresh_token = create_refresh_token(
-                {"sub": str(user.id), "client_id": str(client_id)}
+                {"sub": str(user.id), "tenant_id": str(actual_tenant_id)}
             )
 
             # Create session
@@ -89,7 +92,7 @@ class AsyncAuthRepository:
                 user_id=user_id,
                 token_hash=self._hash_token(access_token),
                 refresh_token_hash=self._hash_token(refresh_token),
-                client_id=client_id,
+                tenant_id=actual_tenant_id,
                 ip_address=ip_address,
                 user_agent=user_agent,
                 expires_at=datetime.fromtimestamp(
@@ -109,7 +112,7 @@ class AsyncAuthRepository:
             raise
 
     async def refresh_tokens(
-        self, refresh_token: str, client_id: uuid.UUID
+        self, refresh_token: str, tenant_id: uuid.UUID
     ) -> Tuple[Optional[User], Optional[Session], Optional[str], Optional[str]]:
         """
         Refresh access tokens using refresh token.
@@ -123,8 +126,8 @@ class AsyncAuthRepository:
 
             # Get session by refresh token hash
             session = await self.session_repo.get_by_refresh_hash(refresh_hash)
-            if not session or str(session.client_id) != str(client_id):
-                logger.warning(f"Invalid refresh token attempt for client {client_id}")
+            if not session or str(session.tenant_id) != str(tenant_id):
+                logger.warning(f"Invalid refresh token attempt for tenant {tenant_id}")
                 return None, None, None, None
 
             # Get user with relationships
@@ -143,10 +146,10 @@ class AsyncAuthRepository:
 
             # Create new tokens
             new_access_token = create_access_token(
-                {"sub": str(user.id), "client_id": str(client_id)}
+                {"sub": str(user.id), "tenant_id": str(tenant_id)}
             )
             new_refresh_token = create_refresh_token(
-                {"sub": str(user.id), "client_id": str(client_id)}
+                {"sub": str(user.id), "tenant_id": str(tenant_id)}
             )
 
             # Update session with new tokens (token rotation)

@@ -10,7 +10,13 @@ const RBACGuard: React.FC<RBACGuardProps> = ({
   children,
   fallback,
 }) => {
-  const { hasRole, hasAnyPermission, hasAllPermissions } = useRBAC();
+    const { user, hasRole, hasAnyPermission, hasAllPermissions } = useRBAC();
+
+  // Early exit: if user is superadmin, always grant access
+  if (user && user.is_superuser) {
+    console.log('RBACGuard: Superadmin user detected, granting access to:', { permissions, roles });
+    return <>{children}</>;
+  }
 
   // Check permissions
   let hasRequiredPermissions = true;
@@ -29,6 +35,16 @@ const RBACGuard: React.FC<RBACGuardProps> = ({
   }
 
   const isAuthorized = hasRequiredPermissions && hasRequiredRoles;
+
+  console.log('RBACGuard authorization check:', {
+    permissions,
+    roles,
+    hasRequiredPermissions,
+    hasRequiredRoles,
+    isAuthorized,
+    userEmail: user?.email,
+    isSuperUser: user?.is_superuser
+  });
 
   if (!isAuthorized) {
     if (fallback) {

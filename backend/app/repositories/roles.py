@@ -41,11 +41,11 @@ class AsyncRoleRepository:
             logger.error(f"Error getting role by ID {role_id}: {e}")
             raise
 
-    async def get_by_name(self, name: str, client_id: uuid.UUID) -> Optional[Role]:
+    async def get_by_name(self, name: str, tenant_id: uuid.UUID) -> Optional[Role]:
         """Get role by name within tenant."""
         start_time = time.time()
         try:
-            stmt = select(Role).where(Role.name == name, Role.client_id == client_id)
+            stmt = select(Role).where(Role.name == name, Role.tenant_id == tenant_id)
             result = await self.session.execute(stmt)
             role = result.scalar_one_or_none()
 
@@ -65,7 +65,7 @@ class AsyncRoleRepository:
                 name=role_data.name,
                 description=role_data.description or "",
                 permissions=role_data.permissions or [],
-                client_id=role_data.client_id,
+                tenant_id=role_data.tenant_id,
             )
 
             self.session.add(role)
@@ -83,14 +83,14 @@ class AsyncRoleRepository:
             raise
 
     async def list_by_tenant(
-        self, client_id: uuid.UUID, skip: int = 0, limit: int = 100
+        self, tenant_id: uuid.UUID, skip: int = 0, limit: int = 100
     ) -> List[Role]:
         """List roles by tenant with pagination."""
         start_time = time.time()
         try:
             stmt = (
                 select(Role)
-                .where(Role.client_id == client_id)
+                .where(Role.tenant_id == tenant_id)
                 .offset(skip)
                 .limit(limit)
                 .order_by(Role.created_at.desc())
@@ -103,7 +103,7 @@ class AsyncRoleRepository:
 
             return list(roles)
         except Exception as e:
-            logger.error(f"Error listing roles for tenant {client_id}: {e}")
+            logger.error(f"Error listing roles for tenant {tenant_id}: {e}")
             raise
 
     async def update(self, role_id: uuid.UUID, updates: dict) -> Optional[Role]:
@@ -213,7 +213,7 @@ class AsyncRoleRepository:
                 return False
 
             # Validate same tenant
-            if str(user.client_id) != str(role.client_id):
+            if str(user.tenant_id) != str(role.tenant_id):
                 logger.warning(
                     f"User {user_id} and role {role_id} are not in the same tenant"
                 )

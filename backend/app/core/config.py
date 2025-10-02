@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 300
 
     # Database
-    DATABASE_URL: str = "sqlite:///./backend/db/dev.db"
+    DATABASE_URL: str = "sqlite:///./db/dev.db"
 
     # Auth
     SECRET_KEY: str = "dev-secret"

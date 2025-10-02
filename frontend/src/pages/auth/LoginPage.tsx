@@ -40,7 +40,6 @@ export const LoginPage: React.FC = () => {
     defaultValues: {
       email: '',
       password: '',
-      tenant_id: '',
       remember: false,
     },
   });
@@ -53,7 +52,6 @@ export const LoginPage: React.FC = () => {
         {
           email: data.email.trim(),
           password: data.password,
-          tenant_id: data.tenant_id?.trim() || undefined,
         },
         {
           onSuccess: () => {
@@ -174,21 +172,7 @@ export const LoginPage: React.FC = () => {
                 )}
               />
 
-              <Controller
-                name="tenant_id"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    margin="normal"
-                    fullWidth
-                    label="Tenant ID (optional)"
-                    autoComplete="organization"
-                    helperText="Provide a tenant/client identifier if required."
-                    disabled={isLoading}
-                  />
-                )}
-              />
+
 
               <Controller
                 name="remember"
@@ -229,10 +213,13 @@ export const LoginPage: React.FC = () => {
                   Demo Credentials:
                 </Typography>
                 <Typography variant="caption" display="block">
-                  Admin: admin@example.com / password123
+                  Superadmin: superadmin@example.com / pass1234
                 </Typography>
                 <Typography variant="caption" display="block">
-                  User: user@example.com / password123
+                  User: user@example.com / pass1234
+                </Typography>
+                <Typography variant="caption" display="block" sx={{ mt: 1, fontStyle: 'italic' }}>
+                  Tenant assignment is automatic based on user role
                 </Typography>
               </Box>
             </Box>

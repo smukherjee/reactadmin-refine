@@ -100,11 +100,34 @@ async def async_safe_redis_call(
             "error": "redis client not initialized",
         }
 
-    start = asyncio.get_event_loop().time()
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            return {
+                "ok": False,
+                "result": None,
+                "elapsed_ms": 0.0,
+                "timeout": False,
+                "error": "event loop is closed",
+            }
+        start = loop.time()
+    except RuntimeError:
+        # No event loop running
+        return {
+            "ok": False,
+            "result": None,
+            "elapsed_ms": 0.0,
+            "timeout": False,
+            "error": "no event loop running",
+        }
+
     try:
         coro = fn(client)
         res = await asyncio.wait_for(coro, timeout=timeout)
-        elapsed_ms = (asyncio.get_event_loop().time() - start) * 1000
+        try:
+            elapsed_ms = (loop.time() - start) * 1000
+        except RuntimeError:
+            elapsed_ms = 0.0
         return {
             "ok": True,
             "result": res,
@@ -113,7 +136,10 @@ async def async_safe_redis_call(
             "error": None,
         }
     except asyncio.TimeoutError:
-        elapsed_ms = (asyncio.get_event_loop().time() - start) * 1000
+        try:
+            elapsed_ms = (loop.time() - start) * 1000
+        except RuntimeError:
+            elapsed_ms = 0.0
         return {
             "ok": False,
             "result": None,
@@ -122,7 +148,10 @@ async def async_safe_redis_call(
             "error": "timeout",
         }
     except Exception as e:
-        elapsed_ms = (asyncio.get_event_loop().time() - start) * 1000
+        try:
+            elapsed_ms = (loop.time() - start) * 1000
+        except RuntimeError:
+            elapsed_ms = 0.0
         return {
             "ok": False,
             "result": None,

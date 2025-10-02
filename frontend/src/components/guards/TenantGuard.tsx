@@ -11,7 +11,17 @@ export const TenantGuard: React.FC<TenantGuardProps> = ({ children }) => {
   const { currentTenant, isLoading } = useTenant();
   const location = useLocation();
 
+  console.log('TenantGuard check:', {
+    currentTenant,
+    isLoading,
+    pathname: location.pathname,
+    hasCurrentTenant: !!currentTenant,
+    currentTenantId: currentTenant?.id,
+    currentTenantName: currentTenant?.name
+  });
+
   if (isLoading) {
+    console.log('TenantGuard: showing loading spinner');
     return (
       <Box
         sx={{
@@ -28,14 +38,17 @@ export const TenantGuard: React.FC<TenantGuardProps> = ({ children }) => {
 
   // If no current tenant and not already on tenant selection page, redirect
   if (!currentTenant && location.pathname !== '/tenant-selection') {
+    console.log('TenantGuard: no tenant, redirecting to tenant-selection');
     return <Navigate to="/tenant-selection" replace />;
   }
 
   // If on tenant selection page but has a tenant, redirect to dashboard
   if (currentTenant && location.pathname === '/tenant-selection') {
+    console.log('TenantGuard: has tenant, redirecting to dashboard');
     return <Navigate to="/" replace />;
   }
 
+  console.log('TenantGuard: allowing access to', location.pathname);
   return <>{children}</>;
 };
 

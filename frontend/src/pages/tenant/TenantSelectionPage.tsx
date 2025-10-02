@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { Business as BusinessIcon } from '@mui/icons-material';
 import { TenantSelector } from '../../components/tenant/TenantSelector';
+import { TenantDebug } from '../../components/debug/TenantDebug';
 
 export const TenantSelectionPage: React.FC = () => {
   return (
@@ -49,6 +50,9 @@ export const TenantSelectionPage: React.FC = () => {
             </Stack>
           </CardContent>
         </Card>
+        
+        {/* Debug information */}
+        {import.meta.env.MODE === 'development' && <TenantDebug />}
       </Box>
     </Container>
   );

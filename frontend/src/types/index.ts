@@ -75,7 +75,6 @@ export interface AuthUser {
 export interface LoginRequest {
   email: string;
   password: string;
-  tenant_id?: string | null;
 }
 
 export interface LoginResponse {

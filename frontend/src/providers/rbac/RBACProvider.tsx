@@ -22,8 +22,29 @@ export const RBACProvider: React.FC<RBACProviderProps> = ({ children }) => {
       const userStr = localStorage.getItem('user');
       if (userStr) {
         const userData: AuthUser = JSON.parse(userStr);
+        console.log('RBAC Provider loading user data:', {
+          userId: userData.id,
+          email: userData.email,
+          is_superuser: userData.is_superuser,
+          permissions: userData.permissions,
+          roles: userData.roles
+        });
         setUser(userData);
-        setPermissions(userData.permissions || []);
+        
+        // If user is superadmin but has no permissions, provide comprehensive default permissions
+        let userPermissions = userData.permissions || [];
+        if (userData.is_superuser && userPermissions.length === 0) {
+          userPermissions = [
+            'dashboard:read',
+            'read:users', 'create:users', 'update:users', 'delete:users',
+            'read:roles', 'create:roles', 'update:roles', 'delete:roles',
+            'read:audit_logs',
+            'tenant:manage', 'tenant:switch'
+          ];
+          console.log('Superadmin user detected with no permissions, providing default permissions:', userPermissions);
+        }
+        
+        setPermissions(userPermissions);
         setRoles(userData.roles || []);
       }
     } catch (error) {
@@ -34,6 +55,13 @@ export const RBACProvider: React.FC<RBACProviderProps> = ({ children }) => {
   };
 
   const hasPermission = (permission: string): boolean => {
+    console.log('RBAC hasPermission check:', {
+      permission,
+      user: user ? { id: user.id, email: user.email, is_superuser: user.is_superuser } : null,
+      permissions,
+      result: user ? (user.is_superuser ? true : permissions.includes(permission)) : false
+    });
+    
     if (!user) return false;
     if (user.is_superuser) return true;
     return permissions.includes(permission);
@@ -46,6 +74,13 @@ export const RBACProvider: React.FC<RBACProviderProps> = ({ children }) => {
   };
 
   const hasAnyPermission = (requiredPermissions: string[]): boolean => {
+    console.log('RBAC hasAnyPermission check:', {
+      requiredPermissions,
+      user: user ? { id: user.id, email: user.email, is_superuser: user.is_superuser } : null,
+      permissions,
+      result: user ? (user.is_superuser ? true : requiredPermissions.some(permission => permissions.includes(permission))) : false
+    });
+    
     if (!user) return false;
     if (user.is_superuser) return true;
     return requiredPermissions.some(permission => permissions.includes(permission));

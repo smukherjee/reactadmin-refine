@@ -76,7 +76,8 @@ def require_permission_async(permission: str):
             permissions = await role_repo.get_user_permissions(user_id)
             # Do not perform sync fallback permission checks in v2. Require
             # permissions to be resolvable via async repositories.
-            if permission not in permissions:
+            # Check for specific permission or wildcard "*" permission
+            if permission not in permissions and "*" not in permissions:
                 logger.warning(f"User {current_user.id} lacks permission: {permission}")
                 raise HTTPException(status_code=403, detail="Insufficient permissions")
 
@@ -103,11 +104,14 @@ async def get_user_permissions_async(user_id: uuid.UUID, db: AsyncSession) -> Se
         return set()
 
 
-def validate_tenant_access_async(current_user: User, requested_client_id: str):
+def validate_tenant_access_async(current_user: User, requested_tenant_id: str):
     """Validate that the current user can access the requested tenant."""
-    if str(current_user.tenant_id) != str(requested_client_id):
+    # Check if user has superadmin role - superadmin can access any tenant
+    is_superadmin = any(role.name == "superadmin" for role in current_user.roles) if current_user.roles else False
+    
+    if not is_superadmin and str(current_user.tenant_id) != str(requested_tenant_id):
         logger.warning(
-            f"User {current_user.id} attempted to access tenant {requested_client_id}, but belongs to {current_user.tenant_id}"
+            f"User {current_user.id} attempted to access tenant {requested_tenant_id}, but belongs to {current_user.tenant_id}"
         )
         raise HTTPException(
             status_code=403, detail="Forbidden: Cannot access different tenant"

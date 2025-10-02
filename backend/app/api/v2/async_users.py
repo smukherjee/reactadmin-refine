@@ -14,6 +14,7 @@ from backend.app.crud.core import pwd_context
 from backend.app.db.core import get_async_db
 from backend.app.models.core import User
 from backend.app.repositories import get_user_repository
+from backend.app.repositories.tenants import get_tenant_repository
 from backend.app.schemas.core import UserCreate, UserOut, UserUpdate, UserWithTenantOut
 
 router = APIRouter(prefix="/async/users", tags=["async-users"])
@@ -30,10 +31,23 @@ async def get_current_user_async(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    # Check if user has superadmin role
+    is_superadmin = any(role.name == "superadmin" for role in user.roles) if user.roles else False
+    
+    # Get available tenants based on role
+    if is_superadmin:
+        # Superadmin gets access to all tenants
+        tenant_repo = await get_tenant_repository(db)
+        all_tenants = await tenant_repo.list_all()
+        available_tenants = all_tenants
+    else:
+        # Regular users only get their own tenant
+        available_tenants = [user.tenant]
+    
     # Convert to dict and add tenant fields
     user_dict = user.__dict__.copy()
     user_dict['current_tenant'] = user.tenant
-    user_dict['available_tenants'] = [user.tenant]
+    user_dict['available_tenants'] = available_tenants
     
     return user_dict
 

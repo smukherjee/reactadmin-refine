@@ -117,12 +117,12 @@ async def async_login(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="email and password required",
                 )
-            tenant_id = uuid.UUID(tenant_id_str) if tenant_id_str else uuid.uuid4()
+            tenant_id = uuid.UUID(tenant_id_str) if tenant_id_str else None
         else:
             tenant_id = (
-                uuid.uuid4()
-                if not login_data.tenant_id
-                else uuid.UUID(login_data.tenant_id)
+                uuid.UUID(login_data.tenant_id)
+                if login_data.tenant_id
+                else None
             )
             email = login_data.email
             password = login_data.password

@@ -1,6 +1,7 @@
 import React from 'react';
-import { AppBar, Toolbar, Typography, Button, Box, Chip } from '@mui/material';
+import { AppBar, Toolbar, Typography, Button, Box, Chip, IconButton, Menu, MenuItem } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useLogout, useGetIdentity } from '@refinedev/core';
 import { 
   Dashboard as DashboardIcon,
   People as PeopleIcon,
@@ -8,6 +9,8 @@ import {
   Assignment as AssignmentIcon,
   Login as LoginIcon,
   Business as BusinessIcon,
+  AccountCircle as AccountIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useTenant } from '../../providers/tenant/TenantProvider';
 
@@ -15,6 +18,22 @@ export const Navigation: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentTenant } = useTenant();
+  const { data: identity } = useGetIdentity();
+  const { mutate: logout } = useLogout();
+  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+
+  const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleUserMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLogout = () => {
+    handleUserMenuClose();
+    logout();
+  };
 
   const navigationItems = [
     { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
@@ -49,6 +68,33 @@ export const Navigation: React.FC = () => {
             onClick={() => navigate('/tenant-selection')}
             clickable
           />
+        )}
+
+        {identity && (
+          <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}>
+            <Typography variant="body2" sx={{ mr: 1, color: 'white' }}>
+              {identity.name || identity.email}
+            </Typography>
+            <IconButton
+              size="large"
+              onClick={handleUserMenuOpen}
+              color="inherit"
+            >
+              <AccountIcon />
+            </IconButton>
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={handleUserMenuClose}
+            >
+              <MenuItem onClick={() => { handleUserMenuClose(); navigate('/tenant-selection'); }}>
+                <BusinessIcon sx={{ mr: 1 }} /> Switch Tenant
+              </MenuItem>
+              <MenuItem onClick={handleLogout}>
+                <LogoutIcon sx={{ mr: 1 }} /> Logout
+              </MenuItem>
+            </Menu>
+          </Box>
         )}
         
         <Box sx={{ display: 'flex', gap: 1 }}>

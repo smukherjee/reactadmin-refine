@@ -27,7 +27,9 @@ import {
 } from '@mui/icons-material';
 import { runApiTests, type ApiTestResult } from '../../utils/apiTester';
 import { validateConfiguration, type ConfigValidationResult } from '../../utils/configValidator';
+import { TenantDebug } from './TenantDebug';
 import { UserTenantDebug } from './UserTenantDebug';
+import { UserDebug } from './UserDebug';
 
 interface DebugInfo {
   environment: Record<string, any>;
@@ -193,6 +195,11 @@ export const DebugDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* User Debug */}
+      <Box sx={{ mb: 3 }}>
+        <UserDebug />
+      </Box>
+      
       {/* User & Tenant Debug */}
       <Box sx={{ mb: 3 }}>
         <UserTenantDebug />
